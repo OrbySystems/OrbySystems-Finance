@@ -217,8 +217,8 @@ _PAGE_TITLES = frozenset({
 _NUM = r"-?\$?-?[\d,]+\.\d+"
 # A holdings cell, which may also be one of Fidelity's placeholders
 # instead of a figure. "--" must precede "-" in the alternation.
-_VALUE = r"(?:not applicable|unavailable|--|-|" + _NUM + r"%?)"
-_PLACEHOLDERS = frozenset({"", "-", "--", "not applicable", "unavailable"})
+_VALUE = r"(?:not applicable|unavailable|unknown|--|-|" + _NUM + r"%?)"
+_PLACEHOLDERS = frozenset({"", "-", "--", "not applicable", "unavailable", "unknown"})
 
 
 def _amount(token: str | None) -> float | None:
@@ -254,6 +254,18 @@ _HOLDING_SECTIONS = frozenset({
     "Bonds",
     "Options",
     "Other Investments",
+    # A share out on loan is still the account's position - the broker has
+    # lent it out and posted collateral, but the owner still owns it and
+    # the statement counts it in Total Holdings. Leaving the section
+    # unrecognised does not lose the row quietly: the holdings total stops
+    # reconciling against the statement's own, which is how it was found.
+    #
+    # The section also carries a collateral line ("COLLATERAL DELV TO ...
+    # SECURITIES ON LOAN NOT COVERED BY SIPC") whose market value prints
+    # as "unavailable"; that is a note about the arrangement rather than a
+    # position, and the holding row regex already skips a row with no
+    # value.
+    "Loaned/Collateralized Securities",
 })
 # Sub-category labels within a holdings section. An unrecognized one in
 # some future statement costs only the row's optional "subtype".
@@ -485,6 +497,34 @@ _CORPORATE_DIRECTIONS = {"Other Activity In": "In", "Other Activity Out": "Out"}
 # was bought and sold can exclude them in one predicate.
 _CORPORATE_TYPE = "corporate_action"
 
+# Charges the account paid that no Activity row prints: the period's
+# transaction costs and its margin interest. They appear ONLY in the
+# Account Summary's Additions/Subtractions block.
+#
+# They matter because the statement's own arithmetic is
+#     Ending = Beginning + Additions - Subtractions + Change in Investment Value
+# and Subtractions is withdrawals PLUS these. Leave them out and the money
+# still left the account, so it silently lands in whatever a period-return
+# calculation reports as investment performance - the account looks like it
+# performed slightly worse than it did, by exactly the fees.
+#
+# A cell here is a figure or a bare "-" meaning none, and _amount already
+# reads "-" as no value (see _PLACEHOLDERS).
+_SUMMARY_CELL = r"(?:" + _NUM + r"|-)"
+# The block is printed TWICE - once on page 1 without the breakdown, once
+# on page 2 with it - so both regexes take the first match only. The two
+# printings carry identical figures; matching both would double the charge.
+#
+# Page 2 is a two-column layout, so the extracted text interleaves the
+# holdings pie chart into the middle of the block ("Subtractions", then
+# "99% Stocks (...)", then "Withdrawals"). These anchor on their own label
+# and line rather than on adjacency to the block, which is why that does
+# not matter.
+_SUMMARY_FEES_RE = re.compile(
+    r"^Transaction Costs, Fees & Charges\s+(" + _SUMMARY_CELL + r")\s+(" + _SUMMARY_CELL + r")\s*$", re.M)
+_SUMMARY_MARGIN_INTEREST_RE = re.compile(
+    r"^Margin Interest\s+(" + _SUMMARY_CELL + r")\s+(" + _SUMMARY_CELL + r")\s*$", re.M)
+
 _TOTAL_DEPOSITS_RE = re.compile(r"^Total Deposits\s+(" + _NUM + r")\s*$", re.M)
 _TOTAL_WITHDRAWALS_RE = re.compile(r"^Total Withdrawals\s+(" + _NUM + r")\s*$", re.M)
 _TOTAL_EXCHANGES_IN_RE = re.compile(r"^Total Exchanges In\s+(" + _NUM + r")\s*$", re.M)
@@ -518,6 +558,8 @@ _DEPOSIT_ACTION = "Deposit"
 _WITHDRAWAL_ACTION = "Withdrawal"
 _INTERNAL_TRANSFER_TYPE = "internal_transfer"
 _CORE_FUND_ACTIVITY_TYPE = "core_fund_activity"
+_FEE_ACTION = "Fee"
+_MARGIN_INTEREST_ACTION = "Margin Interest"
 _TRANSFER_IN_ACTION = "Transfer In"
 _TRANSFER_OUT_ACTION = "Transfer Out"
 
@@ -924,6 +966,46 @@ def _check_income(income: list[dict], text: str) -> None:
 # worse than no check.
 
 
+def _summary_charges(combined: str, statement_date: str) -> list[dict]:
+    """The period's fees and margin interest, read from the Account
+    Summary block.
+
+    Dated to the statement's period end rather than to a day, because the
+    statement reports them as a period total and never says when each one
+    was charged. That is honest about what is known - inventing a date
+    would put a charge in a day-level answer that the source cannot
+    support.
+
+    The first of the two printed columns is "This Period"; the second is
+    year-to-date and is deliberately ignored, because every statement
+    would then re-report the same year's charges.
+    """
+    rows: list[dict] = []
+    if not statement_date:
+        return rows
+    for regex, action, label in (
+        (_SUMMARY_FEES_RE, _FEE_ACTION, "Transaction Costs, Fees & Charges"),
+        (_SUMMARY_MARGIN_INTEREST_RE, _MARGIN_INTEREST_ACTION, "Margin Interest"),
+    ):
+        match = regex.search(combined)
+        if not match:
+            continue
+        amount = _amount(match.group(1))
+        if amount is None or abs(amount) <= _EPS:
+            continue
+        rows.append({
+            "date": statement_date,
+            "_label": "",
+            "_name": label,
+            # Printed negative, and negative is already the convention for
+            # money the account holder no longer has.
+            "amount": amount,
+            "action": action,
+            "currency_code": _CURRENCY,
+        })
+    return rows
+
+
 def _check_transfers(transfers: list[dict], text: str) -> None:
     for regex, action, label in (
         (_TOTAL_DEPOSITS_RE, _DEPOSIT_ACTION, "Total Deposits"),
@@ -1292,7 +1374,17 @@ def _finish_activity(rows: list[dict], holdings: list[dict]) -> None:
             row["symbol"] = symbol
 
 
-def parse(pages_text: list[str], pdf_path: str) -> dict:
+def _parse_account_pages(pages_text: list[str], pdf_path: str,
+                         account_override: str | None = None,
+                         type_override: str | None = None) -> dict:
+    """Parses the pages of ONE account.
+
+    On an ordinary single-account statement that is every page and the
+    overrides are None, so the account and its type are worked out from
+    the document exactly as before. On a combined statement parse() calls
+    this once per account section, passing the account it already read
+    from the report's own index - see _account_groups.
+    """
     combined = "\n".join(pages_text)
     start, end = _statement_period(combined)
     statement_date = end.isoformat() if end else ""
@@ -1300,8 +1392,8 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
     lines, header_lines = _clean_pages(pages_text)
     year_end = any(_YEAR_END_HOLDINGS_HEADER_RE.match(line) for line in lines)
     holding_row_re = _HOLDING_ROW_RE_YEAR_END if year_end else _HOLDING_ROW_RE
-    account = _account_identity(combined, header_lines)
-    account_type = _account_type(_account_title_block(pages_text, header_lines))
+    account = account_override or _account_identity(combined, header_lines)
+    account_type = type_override or _account_type(_account_title_block(pages_text, header_lines))
     margin_words = _margin_first_words(pdf_path)
 
     holdings: list[dict] = []
@@ -1579,9 +1671,16 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
                 "currency_code": _CURRENCY,
             })
 
+    # Read from `combined`, the raw joined pages, rather than from the
+    # cleaned lines: the same charge line is printed on two pages, so
+    # _clean_pages' repeated-header stripping is entitled to treat it as
+    # boilerplate and drop it.
+    charges = _summary_charges(combined, statement_date)
+
     _finish_holdings(holdings)
     _check_core_fund_activity(core, "\n".join(lines))
-    _finish_activity(trades + income + transfers + exchanges + internal_transfers + corporate, holdings)
+    _finish_activity(
+        trades + income + transfers + exchanges + internal_transfers + corporate + charges, holdings)
 
     cleaned_text = "\n".join(lines)
     _check_holdings(holdings, cleaned_text)
@@ -1589,7 +1688,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
     _check_income(income, cleaned_text)
     _check_transfers(transfers + exchanges, cleaned_text)
 
-    for rows in (holdings, trades, income, transfers, exchanges, internal_transfers, corporate):
+    for rows in (holdings, trades, income, transfers, exchanges, internal_transfers, corporate, charges):
         # "account" is a display label, truncated to the last 4 digits
         # like every other parser (see statement.go's Transaction doc).
         # The fullest identifier _account_identity() found is used only
@@ -1602,6 +1701,136 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
         "statementDate": statement_date,
         "tables": {
             "brokerage_holdings": holdings,
-            "brokerage_transactions": trades + income + transfers + exchanges + internal_transfers + corporate,
+            "brokerage_transactions": (
+                trades + income + transfers + exchanges + internal_transfers + corporate + charges),
+        },
+    }
+
+
+# --- combined (multi-account) statements ---------------------------------
+#
+# Fidelity does not issue a separate statement per account. A household
+# with a Roth gets ONE "INVESTMENT REPORT" carrying every account, each
+# with its own Account Summary, Holdings and Activity sections.
+#
+# Getting this wrong is silent rather than loud: tagging every row with a
+# single account files a Roth's holdings under the taxable brokerage
+# account, or the reverse, and the portfolio still adds up. Downstream,
+# tax treatment is derived from the account, so an entire retirement
+# balance can end up reported as taxable.
+
+# Page 1 names the whole report. A single-account statement says "Your
+# Account Value"; a combined one says "Your Portfolio Value", because
+# there is more than one account to total.
+_PORTFOLIO_VALUE_RE = re.compile(r"^Your Portfolio Value:", re.M)
+
+# Every page of an account's section repeats its account number in the
+# same header position. This is what attributes a page - and so every row
+# on it - to an account.
+#
+# The number is NOT always digits: one real account's is "X44-123775",
+# with a literal letter. A [\d-]+ pattern silently drops that account
+# rather than failing, so match anything non-blank and let last4_digits
+# reduce it.
+_PAGE_ACCOUNT_RE = re.compile(r"^Account #\s*(\S+)\s*$", re.M)
+
+# The report's own index of what it covers, on page 2:
+#
+#     Page Account Type/Name Number Beginning Value Ending Value
+#     GENERAL INVESTMENTS
+#     4 FIDELITY ACCOUNT JANE DOE - INDIVIDUAL TOD X44-123775 $0.02 $0.02
+#     PERSONAL RETIREMENT
+#     6 FIDELITY ROTH IRA JANE DOE - ROTH INDIVIDUAL RETIREMENT 175-456614 ...
+#
+# The registration text between the account name and the number is where
+# the wrapper is named, and it is what classify_account_type reads.
+_ACCOUNTS_INDEX_HEADER_RE = re.compile(r"^Accounts Included in This Report\s*$", re.M)
+_ACCOUNTS_INDEX_ROW_RE = re.compile(
+    r"^\d+\s+(?P<registration>FIDELITY .+?)\s+(?P<number>[A-Z0-9]+-[A-Z0-9]+)\s+"
+    r"(?:\$?[\d,]+\.\d\d|-)\s+(?:\$?[\d,]+\.\d\d|-)\s*$", re.M)
+
+
+def _account_index(pages_text: list[str]) -> dict[str, str]:
+    """Maps each account number to its type, from the report's own index.
+
+    Read from the index rather than from each section's own title block
+    because the index states the registration in one line per account,
+    where a section header wraps it across the page's header block and
+    interleaves it with the address and the mailing codes.
+
+    An account the index does not name still parses; it just falls back
+    to whatever its own pages say.
+    """
+    out: dict[str, str] = {}
+    for page in pages_text:
+        if not _ACCOUNTS_INDEX_HEADER_RE.search(page):
+            continue
+        for m in _ACCOUNTS_INDEX_ROW_RE.finditer(page):
+            registration = m.group("registration")
+            kind = common.classify_account_type(registration)
+            if kind:
+                out[m.group("number")] = kind
+        if out:
+            break
+    return out
+
+
+def _account_groups(pages_text: list[str]) -> list[tuple[str, str | None, list[str]]]:
+    """Splits a combined statement into (account number, type, pages).
+
+    Pages before the first account section - the portfolio-level summary
+    and the index - and the trailing disclosures carry no account number
+    and belong to no account, so they are dropped rather than folded into
+    a neighbour: they hold no rows, and attaching them would let one
+    account's parse see another's totals.
+
+    Returns an empty list for an ordinary single-account statement, which
+    is the signal to parse the document whole.
+    """
+    if not _PORTFOLIO_VALUE_RE.search("\n".join(pages_text)):
+        return []
+    index = _account_index(pages_text)
+    groups: list[tuple[str, str | None, list[str]]] = []
+    current: str | None = None
+    for page in pages_text:
+        m = _PAGE_ACCOUNT_RE.search(page)
+        number = m.group(1) if m else None
+        if number is None:
+            # A continuation page of the account whose section is open;
+            # anything before the first section has no account at all.
+            if current is None:
+                continue
+            groups[-1][2].append(page)
+            continue
+        if number != current:
+            current = number
+            groups.append((number, index.get(number), []))
+        groups[-1][2].append(page)
+    return groups
+
+
+def parse(pages_text: list[str], pdf_path: str) -> dict:
+    groups = _account_groups(pages_text)
+    if not groups:
+        return _parse_account_pages(pages_text, pdf_path)
+
+    holdings: list[dict] = []
+    transactions: list[dict] = []
+    statement_date = ""
+    for number, kind, pages in groups:
+        # Each account's section is parsed on its own, which is also what
+        # makes the reconciliation checks meaningful: every one of them
+        # compares what was parsed against a total the statement prints,
+        # and those totals are per account.
+        result = _parse_account_pages(pages, pdf_path, number, kind)
+        statement_date = statement_date or result["statementDate"]
+        holdings.extend(result["tables"]["brokerage_holdings"])
+        transactions.extend(result["tables"]["brokerage_transactions"])
+    return {
+        "institution": _INSTITUTION,
+        "statementDate": statement_date,
+        "tables": {
+            "brokerage_holdings": holdings,
+            "brokerage_transactions": transactions,
         },
     }

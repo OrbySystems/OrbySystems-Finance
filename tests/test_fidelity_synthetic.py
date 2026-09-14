@@ -43,7 +43,7 @@ def test_extract_fidelity_synthetic(run_statement, want):
     for key, value in want["positions"].items():
         assert approx(got.get(key, 0.0), value), (key, got.get(key), value)
 
-    bought = sold = income = flows = 0.0
+    bought = sold = income = flows = charges = 0.0
     for tx in stmt.brokerage_transactions:
         action = tx.get("action", "")
         if action == "Buy":
@@ -54,12 +54,18 @@ def test_extract_fidelity_synthetic(run_statement, want):
             income += tx["amount"]
         elif action in ("Deposit", "Withdrawal"):
             flows += tx["amount"]
+        elif action in ("Fee", "Margin Interest"):
+            # Read from the Account Summary's Subtractions breakdown, which
+            # is the only place a statement reports either one - no Activity
+            # row prints them.
+            charges += tx["amount"]
         else:
             assert tx.get("transaction_type") == "corporate_action", (action, tx["description"])
 
     assert approx(bought, want["securitiesBought"])
     assert approx(sold, want["securitiesSold"])
     assert approx(income, want["income"])
+    assert approx(charges, want.get("charges", 0.0)), (charges, want.get("charges"))
     assert approx(flows, want["netFlows"])
 
     assert len(stmt.transactions) == 0
@@ -126,3 +132,63 @@ def test_extract_fidelity_synthetic_year_end(run_statement):
 
     assert approx(total, want["totalHoldings"])
     assert approx(core, want["coreValue"])
+
+
+# Fidelity does not issue a statement per account. A household with a Roth
+# gets ONE report carrying every account, each with its own Account
+# Summary, Holdings and Activity sections.
+#
+# Getting this wrong is silent rather than loud: tag every row with a
+# single account and a Roth's holdings land under the taxable brokerage
+# account, or the reverse. The portfolio still adds up, and because tax
+# treatment is derived from the account, an entire retirement balance can
+# be reported as taxable.
+_COMBINED = "fidelity-synthetic-combined-202608.pdf"
+
+# Registration, last-4, positions and value per account, from
+# gen-fidelity-synthetic-sample.py's build_combined.
+_COMBINED_ACCOUNTS = {
+    "3775": ("Brokerage", 1, 2_500.00),
+    "6614": ("Roth IRA", 3, 65_981.00),
+    "9787": ("Traditional IRA", 1, 431.00),
+}
+
+
+def test_combined_statement_splits_by_account(run_statement):
+    stmt = run_statement(_COMBINED)
+    assert stmt.institution == "Fidelity Investments"
+    assert stmt.statement_date == "2026-08-31"
+
+    got = {}
+    for h in stmt.brokerage_holdings:
+        count, value = got.get(h["account"], (0, 0.0))
+        got[h["account"]] = (count + 1, value + (h.get("current_value") or 0.0))
+
+    assert set(got) == set(_COMBINED_ACCOUNTS), (sorted(got), sorted(_COMBINED_ACCOUNTS))
+    for account, (kind, positions, value) in _COMBINED_ACCOUNTS.items():
+        assert got[account][0] == positions, (account, got[account])
+        assert approx(got[account][1], value), (account, got[account][1], value)
+        types = {h["accountType"] for h in stmt.brokerage_holdings if h["account"] == account}
+        assert types == {kind}, (account, types)
+
+    # The whole report still foots to the portfolio value it prints.
+    assert approx(sum(v[1] for v in got.values()),
+                  sum(v[2] for v in _COMBINED_ACCOUNTS.values()))
+
+
+def test_combined_statement_keeps_loaned_securities(run_statement):
+    """A share out on loan is still owned and still counted in Total
+    Holdings, and it prints "unknown" where a cost basis would be.
+
+    Both halves matter: an unrecognised section loses the position, and an
+    unrecognised placeholder makes the row match nothing at all. Neither
+    is silent - the holdings total stops reconciling against the
+    statement's own - which is how this was found on a real statement.
+    """
+    stmt = run_statement(_COMBINED)
+    loaned = [h for h in stmt.brokerage_holdings if h["symbol"] == "ZQLL"]
+    assert len(loaned) == 1, [h["symbol"] for h in stmt.brokerage_holdings]
+    assert approx(loaned[0]["current_value"], 291.00)
+    assert loaned[0]["account"] == "6614"
+    # "unknown" means no figure, not a figure of zero.
+    assert loaned[0].get("cost_basis_total") is None, loaned[0]

@@ -3,6 +3,7 @@
     {
       "account": "3444",
       "accountType": "Brokerage",
+      "charges": 0.0,
       "closingCoreBalance": 893.56,
       "coreFundActivity": -8930.2,
       "file": "fidelity-synthetic-old-core-cash-202501.pdf",
@@ -19,6 +20,7 @@
     {
       "account": "3444",
       "accountType": "Brokerage",
+      "charges": -15.65,
       "closingCoreBalance": 52254.2,
       "coreFundActivity": -107745.8,
       "file": "fidelity-synthetic-202601.pdf",
@@ -40,6 +42,7 @@
     {
       "account": "3444",
       "accountType": "Brokerage",
+      "charges": -1.38,
       "closingCoreBalance": 38157.36,
       "coreFundActivity": -14096.84,
       "file": "fidelity-synthetic-202602.pdf",
@@ -64,6 +67,7 @@
     {
       "account": "3444",
       "accountType": "Brokerage",
+      "charges": -2.31,
       "closingCoreBalance": 46549.7,
       "coreFundActivity": 8392.34,
       "file": "fidelity-synthetic-202603.pdf",
