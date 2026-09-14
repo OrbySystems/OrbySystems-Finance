@@ -94,6 +94,9 @@ REGISTRATION = "XXXXX XXXXXXXX - SYNTHETIC JOINT WROS - TOD"
 SECURITIES = {
     "ZQAA": {"name": ["ZENITH QUANTUM ALPHA ETF"], "cusip": "111111AA1",
              "section": "Exchange Traded Products", "sub": "Equity ETPs"},
+    # Held only in the combined fixture, out on loan - see build_combined.
+    "ZQLL": {"name": ["ZENITH LENDING CORP COM NEW"], "cusip": "999999LL9",
+             "section": "Stocks", "sub": "Common Stock"},
     "ZQBB": {"name": ["ZENITH QUANTUM BOND", "INDEX ETF"], "cusip": "222222BB2",
              "section": "Exchange Traded Products", "sub": "Fixed Income ETPs"},
     "ZQCC": {"name": ["ZENITH QUANTUM COMMODITY", "TRACKER ETF"], "cusip": "333333CC3",
@@ -124,7 +127,7 @@ def money(v, dollar=False, places=2):
 
 class Holding:
     def __init__(self, symbol, quantity, price, cost_basis, begin_value,
-                 margin=False, eai=None, option=None):
+                 margin=False, eai=None, option=None, loaned=False):
         self.symbol = symbol
         self.quantity = quantity
         self.price = price
@@ -133,6 +136,10 @@ class Holding:
         self.margin = margin
         self.eai = eai
         self.option = option          # OCC code + printed contract text
+        # A share the broker has lent out. Still owned, still counted in
+        # Total Holdings, and printed in its own section with "unknown"
+        # where a cost basis would be.
+        self.loaned = loaned
 
     @property
     def value(self):
@@ -198,6 +205,9 @@ def month_one():
     return dict(
         period=("January 1, 2026", "January 31, 2026"), page_label="Jan",
         begin_value=565_900.00, opening_core=160_000.00,
+        # The Subtractions breakdown: a transaction-cost total and margin
+        # interest, neither of which appears anywhere else on a statement.
+        summary_fees=-3.25, margin_interest=-12.40,
         holdings=holdings, trades=trades, income=income,
         deposits=deposits, withdrawals=withdrawals, cash=cash,
         masked_account_label=False, subtotal_inline=False,
@@ -440,7 +450,7 @@ class Statement:
         elif d["masked_account_label"]:
             p.line(f"xxxxxxx x xxxxxx{ACCOUNT_DIGITS}")
         else:
-            p.line(f"Account # XXXXXXXX{ACCOUNT_DIGITS}")
+            p.line(f"Account # {d.get('account_number') or 'XXXXXXXX' + ACCOUNT_DIGITS}")
         p.line(self.section_title)
         p.line(REGISTRATION)
         return p
@@ -493,8 +503,16 @@ class Statement:
             wraps = wraps + [f"({h.symbol})"] if wraps else [f"({h.symbol})"]
 
         begin = "unavailable" if not h.begin_value else money(h.begin_value, dollar=True)
-        cost = "not applicable" if h.cost_basis is None else money(h.cost_basis, dollar=True)
-        gain = "not applicable" if h.cost_basis is None else money(h.gain, dollar=True)
+        if h.loaned:
+            # A lent-out position prints "unknown" rather than "not
+            # applicable": the broker has it on loan and carries no basis
+            # for it. Same meaning - no figure - and the parser has to
+            # read it as such, or the row matches nothing and the
+            # holdings total silently loses it.
+            cost = gain = "unknown"
+        else:
+            cost = "not applicable" if h.cost_basis is None else money(h.cost_basis, dollar=True)
+            gain = "not applicable" if h.cost_basis is None else money(h.gain, dollar=True)
         eai = money(h.eai, dollar=True) if h.eai else "-"
         cells = [begin, money(h.quantity, places=3), money(h.price, dollar=True, places=4),
                  money(h.value, dollar=True), cost, gain]
@@ -523,11 +541,13 @@ class Statement:
         by_section = {}
         for h in d["holdings"]:
             sec = SECURITIES.get(h.symbol, {})
-            name = "Options" if h.option else sec.get("section", "Stocks")
+            name = ("Loaned/Collateralized Securities" if h.loaned
+                    else "Options" if h.option else sec.get("section", "Stocks"))
             sub = None if h.option else sec.get("sub")
             by_section.setdefault(name, {}).setdefault(sub, []).append(h)
 
-        order = ["Core Account", "Exchange Traded Products", "Stocks", "Options"]
+        order = ["Core Account", "Exchange Traded Products", "Stocks", "Options",
+                 "Loaned/Collateralized Securities"]
         p = self.new_page("Holdings")
         p.line("Holdings")
         for section in order:
@@ -827,12 +847,19 @@ class Statement:
         if self.d.get("fully_masked_account"):
             p.line(f"Account Number: {'X' * (8 + len(ACCOUNT_DIGITS))}")
         else:
-            p.line(f"Account Number: XXXXXXXX{ACCOUNT_DIGITS}")
+            p.line(f"Account Number: {self.d.get('account_number') or 'XXXXXXXX' + ACCOUNT_DIGITS}")
         p.line(f"Your Account Value: {money(self.total_holdings, dollar=True)}")
         p.blank()
         deposits = round(sum(r["amount"] for r in self.d["deposits"]), 2)
         fees = round(sum(t["fee"] for t in self.d["trades"] if t["fee"]), 2)
-        withdrawals = round(sum(r["amount"] for r in self.d["withdrawals"]), 2) + fees
+        # Charges reported only in the summary block. Kept separate from
+        # the per-trade "fee" figures because on a real statement they are
+        # a period total that no Activity row prints - which is exactly
+        # why the parser has to read them from here.
+        fees += self.d.get("summary_fees") or 0.0
+        margin_interest = self.d.get("margin_interest") or 0.0
+        withdrawals = round(
+            sum(r["amount"] for r in self.d["withdrawals"]), 2) + fees + margin_interest
         begin = self.d["begin_value"]
         p.line("This Period Year-to-Date")
         if begin is not None:
@@ -842,6 +869,14 @@ class Statement:
                 p.line(f"Additions {money(deposits)} {money(deposits)}")
             if withdrawals:
                 p.line(f"Subtractions {money(withdrawals)} {money(withdrawals)}")
+                # Itemised beneath the total, exactly as the real layout
+                # does. These two lines are the ONLY place the statement
+                # reports what the broker charged.
+                if fees:
+                    p.line("Transaction Costs, Fees & Charges "
+                           f"{money(fees)} {money(fees)}")
+                if margin_interest:
+                    p.line(f"Margin Interest {money(margin_interest)} {money(margin_interest)}")
             p.line(f"Change in Investment Value * {money(change)} {money(change)}")
         p.line(f"Ending Account Value ** {money(self.total_holdings, dollar=True)} "
                f"{money(self.total_holdings, dollar=True)}")
@@ -909,6 +944,15 @@ class Statement:
             "coreFundActivity": self.core_total,
             "closingCoreBalance": self.closing_core,
             "netFlows": self.net_flows,
+            # The Account Summary's Subtractions breakdown: transaction
+            # costs and margin interest, which no Activity row prints.
+            # Only reported when the summary block itself is (it needs a
+            # beginning value to be printed at all).
+            "charges": (round(
+                (round(sum(t["fee"] for t in self.d["trades"] if t["fee"]), 2)
+                 + (self.d.get("summary_fees") or 0.0)
+                 + (self.d.get("margin_interest") or 0.0)), 2)
+                if self.d.get("begin_value") is not None else 0.0),
             "positions": positions,
         }
 
@@ -969,6 +1013,105 @@ def build_pdf(pages, path):
         f.write(bytes(out))
 
 
+# --- combined (multi-account) statement ----------------------------------
+#
+# Fidelity does not issue a separate statement per account: a household
+# with a Roth gets ONE report carrying every account, each with its own
+# Account Summary, Holdings and Activity sections. Two things identify an
+# account section and both are reproduced here, because the parser needs
+# both - the per-page "Account #" header that attributes a page, and the
+# "Accounts Included in This Report" index that names each account's
+# registration, which is where its type comes from.
+#
+# The registrations below deliberately cover three different wrappers so
+# the shared ACCOUNT_TYPE_PATTERNS table is exercised, and the account
+# numbers are shaped like the real ones - including one that begins with
+# a LETTER, which is what breaks a digits-only pattern.
+COMBINED_ACCOUNTS = [
+    ("X44-123775", "FIDELITY ACCOUNT JAMIE SYNTH - INDIVIDUAL TOD", "Brokerage"),
+    ("175-456614", "FIDELITY ROTH IRA JAMIE SYNTH - ROTH INDIVIDUAL RETIREMENT", "Roth IRA"),
+    ("211-789787", "FIDELITY TRADITIONAL IRA JAMIE SYNTH - TRADITIONAL IRA", "Traditional IRA"),
+]
+
+
+def combined_account_data(number, account_type, holdings, begin, opening_core):
+    """One account's section of a combined statement, built from the same
+    data shape a standalone month uses so the identical emitters run."""
+    return dict(
+        period=("August 1, 2026", "August 31, 2026"), page_label="Aug",
+        begin_value=begin, opening_core=opening_core,
+        account_number=number, account_type_label=account_type,
+        holdings=holdings, trades=[], income=[],
+        deposits=[], withdrawals=[], cash=[],
+        masked_account_label=False, subtotal_inline=False,
+        merger=None, pending=[], adjustments=False,
+    )
+
+
+def build_combined(here):
+    """Writes the combined fixture and returns its per-account totals."""
+    sections = [
+        (COMBINED_ACCOUNTS[0], [core(2_500.00, begin=2_500.00)], 2_500.00, 2_500.00),
+        (COMBINED_ACCOUNTS[1], [
+            core(18_400.00, begin=17_900.00, eai=520.00),
+            Holding("ZQAA", 900.0, 53.10, 44_100.00, 47_790.00, eai=1_377.00),
+            # Out on loan and still owned: the statement counts it in
+            # Total Holdings and prints "unknown" where a cost would be.
+            Holding("ZQLL", 60.0, 4.85, None, 291.00, loaned=True),
+        ], 62_200.00, 17_900.00),
+        (COMBINED_ACCOUNTS[2], [core(431.00, begin=431.00)], 431.00, 431.00),
+    ]
+
+    pages = []
+    totals = []
+    for (number, registration, account_type), holdings, begin, opening_core in sections:
+        data = combined_account_data(number, account_type, holdings, begin, opening_core)
+        stmt = Statement(data, 0, 1)
+        built = stmt.build()
+        # The per-account cover page belongs to the account, not to the
+        # report; the report's own cover is prepended once, below.
+        pages.extend(built)
+        totals.append((number, account_type, stmt.total_holdings))
+
+    cover = Page()
+    y = SIDEBAR_TOP
+    for code in ("S", "41062026", "BBBBB_SYNTHBBBB_", "EC_RM"):
+        cover.items.append((X_SIDEBAR, y, code))
+        y -= LINE_H
+    cover.line("INVESTMENT REPORT")
+    cover.line("August 1, 2026 - August 31, 2026")
+    cover.line("Envelope # BSYNTHBBBBZZZ")
+    cover.line("JAMIE SYNTH")
+    cover.blank()
+    # "Your Portfolio Value", not "Your Account Value" - the one-word
+    # difference that says this report covers more than one account.
+    cover.line(f"Your Portfolio Value: {money(sum(t[2] for t in totals), dollar=True)}")
+
+    index = Page()
+    y = SIDEBAR_TOP
+    for code in ("S", "41062026", "BBBBB_SYNTHBBBB_", "EC_RM"):
+        index.items.append((X_SIDEBAR, y, code))
+        y -= LINE_H
+    index.line("INVESTMENT REPORT")
+    index.line("August 1, 2026 - August 31, 2026")
+    index.line("Accounts Included in This Report")
+    index.line("Account")
+    index.line("Page Account Type/Name Number Beginning Value Ending Value")
+    page_no = 3
+    for (number, registration, _), (_, _, total) in zip(COMBINED_ACCOUNTS, totals):
+        index.line(f"{page_no} {registration} {number} {money(total)} {money(total)}")
+        page_no += 2
+    index.line(f"Ending Portfolio Value {money(sum(t[2] for t in totals), dollar=True)} "
+               f"{money(sum(t[2] for t in totals), dollar=True)}")
+
+    pages = [cover, index] + pages
+    name = "fidelity-synthetic-combined-202608.pdf"
+    build_pdf(pages, os.path.join(here, name))
+    print(f"wrote {name}: {len(pages)} pages, {len(totals)} accounts, "
+          f"portfolio {money(sum(t[2] for t in totals), dollar=True)}")
+    return totals
+
+
 def main():
     here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
     # Each month opens where the last one closed, in both the core
@@ -1026,6 +1169,8 @@ def main():
     masked_name = "fidelity-synthetic-fully-masked-202601.pdf"
     build_pdf(masked_pages, os.path.join(here, masked_name))
     print(f"wrote {masked_name}: {len(masked_pages)} pages, every digit of the account number masked")
+
+    build_combined(here)
 
     sidecar = os.path.join(here, "fidelity-synthetic-expectations.json")
     with open(sidecar, "w") as f:

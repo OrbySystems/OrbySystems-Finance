@@ -12,7 +12,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 1470 >>
+<< /Length 1705 >>
 stream
 BT /F1 8 Tf 1 0 0 1 738.40 752.00 Tm (S) Tj ET
 BT /F1 8 Tf 1 0 0 1 738.40 741.00 Tm (41062026) Tj ET
@@ -30,10 +30,13 @@ BT /F1 8 Tf 1 0 0 1 31.40 598.00 Tm (Your Account Value: $600,454.20) Tj ET
 BT /F1 8 Tf 1 0 0 1 31.40 576.00 Tm (This Period Year-to-Date) Tj ET
 BT /F1 8 Tf 1 0 0 1 31.40 565.00 Tm (Beginning Account Value $565,900.00 $565,900.00) Tj ET
 BT /F1 8 Tf 1 0 0 1 31.40 554.00 Tm (Additions 62,000.00 62,000.00) Tj ET
-BT /F1 8 Tf 1 0 0 1 31.40 543.00 Tm (Change in Investment Value * -27,445.80 -27,445.80) Tj ET
-BT /F1 8 Tf 1 0 0 1 31.40 532.00 Tm (Ending Account Value ** $600,454.20 $600,454.20) Tj ET
-BT /F1 8 Tf 1 0 0 1 31.40 521.00 Tm (Brokerage services provided by Synthetic Brokerage Services LLC, Member NYSE, SIPC.) Tj ET
-BT /F1 8 Tf 1 0 0 1 723.60 510.00 Tm (1 of 4) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 543.00 Tm (Subtractions -15.65 -15.65) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 532.00 Tm (Transaction Costs, Fees & Charges -3.25 -3.25) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 521.00 Tm (Margin Interest -12.40 -12.40) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 510.00 Tm (Change in Investment Value * -27,430.15 -27,430.15) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 499.00 Tm (Ending Account Value ** $600,454.20 $600,454.20) Tj ET
+BT /F1 8 Tf 1 0 0 1 31.40 488.00 Tm (Brokerage services provided by Synthetic Brokerage Services LLC, Member NYSE, SIPC.) Tj ET
+BT /F1 8 Tf 1 0 0 1 723.60 477.00 Tm (1 of 4) Tj ET
 endstream
 endobj
 6 0 obj
@@ -194,14 +197,14 @@ xref
 0000000134 00000 n 
 0000000204 00000 n 
 0000000330 00000 n 
-0000001851 00000 n 
-0000001977 00000 n 
-0000006875 00000 n 
-0000007001 00000 n 
-0000011587 00000 n 
-0000011715 00000 n 
+0000002086 00000 n 
+0000002212 00000 n 
+0000007110 00000 n 
+0000007236 00000 n 
+0000011822 00000 n 
+0000011950 00000 n 
 trailer
 << /Size 12 /Root 1 0 R >>
 startxref
-13192
+13427
 %%EOF
