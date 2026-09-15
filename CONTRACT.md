@@ -107,6 +107,50 @@ share-lending adjustment) is a `brokerage_transactions` row with
 change in `quantity`, and — when the statement names the security on the
 other side — its identifier in `related_security_id`.
 
+### `action` and `transaction_type` are not the same kind of field
+
+| field | what it is | governed? |
+|---|---|---|
+| `action` | the **issuer's own word**, for display. A CSV parser passing the export's column through verbatim is legitimate. | free text |
+| `transaction_type` | the **machine-readable classification**. | closed vocabulary — `parse()` rejects anything else by name |
+
+The vocabulary lives in `scripts/transaction_vocabulary.json`, which is the
+single copy: `parser_common.py` validates against it and Orby reads the same
+file out of the embedded scripts tree to build the SQL that decides what
+counts as money moving.
+
+**This matters most for money entering or leaving an account**, because every
+growth figure Orby reports is computed net of it. A contribution that nothing
+recognises as a contribution is not an error and not a gap — it is reported
+as *investment gain*, and the account appears to have earned its own
+deposits. Detection used to be two words (`action IN ('Deposit',
+'Withdrawal')`) plus one convention that four parsers happened to follow, so
+a parser calling it `Contribution`, `Rollover`, `Journal` or `Direct Deposit`
+produced exactly that, silently.
+
+So: **if a row moves money in or out, set `transaction_type`.** The flow
+classes are `deposit`, `withdrawal`, `contribution`, `distribution`,
+`transfer_in`, `transfer_out`, `internal_transfer`, `rollover_in`,
+`rollover_out`. Use `internal_transfer` when the two sides are both the
+user's own accounts — those net to zero across a portfolio and must not
+count as contributions to it.
+
+The vocabulary also lists issuer words per class, honoured on a row that
+carries no `transaction_type`. That list is a safety net, not the guarantee.
+What actually closes the hole is that an **unrecognised word is reported**:
+
+- a row that sets `transaction_type` is classified, and its `action` is never
+  checked — a corporate action's label is lifted verbatim out of the
+  statement, so checking it would be wrong;
+- a row that sets none is classified by `action` alone, so that word must
+  appear somewhere in the vocabulary. For a bundled parser,
+  `tests/test_transaction_vocabulary.py` fails CI. For a user's own parser,
+  Orby warns at import that those rows are not being counted as money moving.
+
+Adding a word is one line of JSON — in `flows[].actions` if it means money
+moved, in `non_flow_actions` if it does not. Setting `transaction_type` is
+better, because then the question never arises.
+
 `bank_statement.py` normalizes a `KIND_BANK` match into the same envelope
 (`tables = {"cash_transactions": transactions}`) before printing, so
 consumers see one output shape regardless of which kind matched.
