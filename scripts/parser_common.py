@@ -31,6 +31,7 @@ given file is - see _detect's docstring.
 import glob
 import importlib
 import importlib.util
+import json
 import os
 import pkgutil
 import re
@@ -274,6 +275,66 @@ _STRING_ROW_KEYS = {
 _BOOL_ROW_KEYS = {"is_cash_equivalent"}
 
 
+# --- the classification vocabulary, loaded from transaction_vocabulary.json
+# so there is exactly one copy of it. Orby's Go side reads the same file out
+# of the embedded scripts tree (pkg/ingest/flow.go) to build the SQL that
+# decides what counts as money moving in or out, and
+# tests/test_transaction_vocabulary.py fails CI when a bundled parser emits a
+# word that is in neither list.
+#
+# The point of governing these VALUES is the same as the point of governing
+# field NAMES above. A typo'd "amout" key used to become Amount: 0 for every
+# row; a contribution labelled "Rollover" instead of "Deposit" used to become
+# investment gain for the whole account - same silence, larger number. ---
+
+_VOCABULARY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "transaction_vocabulary.json")
+
+with open(_VOCABULARY_PATH, encoding="utf-8") as _f:
+    VOCABULARY = json.load(_f)
+
+#: Closed set. A brokerage_transactions row may omit transaction_type, but
+#: if it sets one it must be from here - see validate_multi_table_parse_result.
+TRANSACTION_TYPES = frozenset(VOCABULARY["transaction_types"])
+
+#: The transaction_type values that mean money entered or left the account.
+FLOW_TRANSACTION_TYPES = frozenset(f["transaction_type"] for f in VOCABULARY["flows"])
+
+#: Issuer words that mean the same, honoured on rows carrying no
+#: transaction_type. A convenience, not the guarantee - see the JSON's _doc.
+FLOW_ACTIONS = frozenset(a for f in VOCABULARY["flows"] for a in f["actions"])
+
+#: Unclassified words already examined and found not to be money movement.
+NON_FLOW_ACTIONS = frozenset(VOCABULARY["non_flow_actions"])
+
+#: Every action a row may carry without a transaction_type to explain it.
+KNOWN_ACTIONS = FLOW_ACTIONS | NON_FLOW_ACTIONS
+
+
+def classifies_as_flow(row: dict) -> bool:
+    """True when this brokerage_transactions row is recognisable as money
+    entering or leaving the account. Mirrors the SQL in pkg/ingest/flow.go."""
+    if row.get("transaction_type") in FLOW_TRANSACTION_TYPES:
+        return True
+    return row.get("action") in FLOW_ACTIONS
+
+
+def unclassified_action(row: dict) -> str:
+    """The row's action if nothing in the vocabulary explains it, else "".
+
+    A row that sets transaction_type is classified and its action is free
+    prose - a corporate action's label is lifted verbatim out of the
+    statement, so checking it would be wrong. Only a row relying on its
+    action alone has to use a word we know.
+    """
+    if row.get("transaction_type"):
+        return ""
+    action = (row.get("action") or "").strip()
+    if not action or action in KNOWN_ACTIONS:
+        return ""
+    return action
+
+
 def validate_parse_result(result: dict, module_name: str) -> None:
     """Raises ValueError with a specific, plugin-author-facing message if
     result doesn't exactly match the parse() contract documented at the
@@ -391,6 +452,19 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
             for key in _BOOL_ROW_KEYS:
                 if key in row and not isinstance(row[key], bool):
                     raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}][{key!r}] must be a bool")
+            # transaction_type is the classification axis and it is closed:
+            # an unrecognized value here would be silently ignored by every
+            # consumer, which for a money-movement class means the row stops
+            # counting as a contribution and starts counting as gain. Fail
+            # by name, the same way an unknown key does.
+            ttype = row.get("transaction_type")
+            if ttype and ttype not in TRANSACTION_TYPES:
+                raise ValueError(
+                    f"{module_name}.parse(): tables[{table_name!r}][{i}]['transaction_type'] "
+                    f"is {ttype!r}, which is not in the vocabulary. Valid values: "
+                    f"{sorted(TRANSACTION_TYPES)}. Add it to "
+                    f"scripts/transaction_vocabulary.json if the class is genuinely new."
+                )
 
 
 def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name: str | None = None):
