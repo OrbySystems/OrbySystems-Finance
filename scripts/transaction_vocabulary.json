@@ -1,0 +1,168 @@
+{
+  "version": 1,
+
+  "_doc": [
+    "The classification vocabulary for brokerage_transactions rows, and the",
+    "single source of truth for it: parser_common.py validates against this",
+    "file, Orby's pkg/ingest reads the same file out of the embedded scripts",
+    "tree to build its SQL, and tests/test_transaction_vocabulary.py fails CI",
+    "when a bundled parser emits a word that is not here.",
+    "",
+    "WHY IT EXISTS. Money entering or leaving an account has to be",
+    "recognisable as such, because every growth figure is computed net of it.",
+    "Detection used to be a two-word allowlist (action IN ('Deposit',",
+    "'Withdrawal')) plus one convention (transaction_type = 'internal_transfer')",
+    "that four parsers happened to follow. A parser calling a contribution",
+    "'Contribution', 'Rollover' or 'Journal' had that money silently counted",
+    "as investment gain - no error, no warning, a portfolio that appears to",
+    "have earned its own deposits.",
+    "",
+    "THE TWO FIELDS ARE NOT THE SAME KIND OF THING.",
+    "  action           - the ISSUER'S OWN WORD, free text, for display. CSV",
+    "                     parsers pass the export's column through verbatim,",
+    "                     which is legitimate and which is why this field",
+    "                     cannot have a closed vocabulary.",
+    "  transaction_type - the MACHINE-READABLE CLASSIFICATION, closed. If it",
+    "                     is set at all it must be one of transaction_types",
+    "                     below, and parse() rejects anything else by name.",
+    "",
+    "SO: classify with transaction_type. The action lists below are a safety",
+    "net for rows that carry no classification - they are a convenience, not",
+    "the guarantee. The guarantee is that an unrecognised word is REPORTED",
+    "(Orby warns at import) and, for a bundled parser, FAILS CI."
+  ],
+
+  "transaction_types": [
+    "buy",
+    "sell",
+    "redemption",
+    "dividend",
+    "interest",
+    "capital_gain",
+    "income",
+    "fee",
+    "tax",
+    "corporate_action",
+    "core_fund_activity",
+    "deposit",
+    "withdrawal",
+    "contribution",
+    "distribution",
+    "transfer_in",
+    "transfer_out",
+    "internal_transfer",
+    "rollover_in",
+    "rollover_out",
+    "other"
+  ],
+
+  "_flows_doc": [
+    "One entry per class of money movement. transaction_type is the value a",
+    "parser SHOULD set; actions are issuer words that mean the same thing and",
+    "are honoured when no transaction_type is present.",
+    "",
+    "direction: 'in' / 'out' / 'sign' - 'sign' means the row's own amount",
+    "decides, which is what a two-way class like a cash sweep needs.",
+    "external: true when the money crosses the portfolio boundary. An",
+    "internal transfer between two of the user's own accounts nets to zero",
+    "across the portfolio and must not count as a contribution to it."
+  ],
+
+  "flows": [
+    {
+      "transaction_type": "deposit",
+      "direction": "in",
+      "external": true,
+      "actions": ["Deposit", "Direct Deposit", "Funds Received", "Cash Deposit"]
+    },
+    {
+      "transaction_type": "contribution",
+      "direction": "in",
+      "external": true,
+      "actions": ["Contribution", "Employee Contribution", "Employer Contribution"]
+    },
+    {
+      "transaction_type": "rollover_in",
+      "direction": "in",
+      "external": true,
+      "actions": ["Rollover In", "Rollover Contribution"]
+    },
+    {
+      "transaction_type": "withdrawal",
+      "direction": "out",
+      "external": true,
+      "actions": ["Withdrawal", "Cash Withdrawal", "Wire Transfer Out"]
+    },
+    {
+      "transaction_type": "distribution",
+      "direction": "out",
+      "external": true,
+      "actions": ["Distribution", "Required Minimum Distribution", "RMD"]
+    },
+    {
+      "transaction_type": "rollover_out",
+      "direction": "out",
+      "external": true,
+      "actions": ["Rollover Out"]
+    },
+    {
+      "transaction_type": "transfer_in",
+      "direction": "in",
+      "external": false,
+      "actions": ["Transfer In", "Sweep In", "Exchange In", "TRANSFER FROM BROKERAGE"]
+    },
+    {
+      "transaction_type": "transfer_out",
+      "direction": "out",
+      "external": false,
+      "actions": ["Transfer Out", "Sweep Out", "Exchange Out", "TRANSFER TO BROKERAGE"]
+    },
+    {
+      "transaction_type": "internal_transfer",
+      "direction": "sign",
+      "external": false,
+      "actions": ["Transfer", "Transfer/Adjustment", "Money Account Sweep", "Journal"]
+    }
+  ],
+
+  "_non_flow_actions_doc": [
+    "THE CLOSURE RULE, which is what the CI check and Orby's import guard",
+    "both apply:",
+    "",
+    "  a row that sets transaction_type is CLASSIFIED - its action is free",
+    "  prose and nothing checks it. A corporate-action row's action is lifted",
+    "  verbatim out of the statement ('Merger Out', 'Assigned Out', whatever",
+    "  the issuer printed), which is exactly why it must not be checked.",
+    "",
+    "  a row that sets NO transaction_type is classified by its action alone,",
+    "  so that action must appear either in a flows[].actions list above or",
+    "  in non_flow_actions below. A word in neither list is a word nobody has",
+    "  looked at: CI fails for a bundled parser, and Orby warns at import for",
+    "  a user-supplied one.",
+    "",
+    "So this list is not a catalogue of everything a statement can say. It is",
+    "the set of unclassified words we have already examined and decided are",
+    "not money movement. The way to stay out of it is to set transaction_type."
+  ],
+
+  "non_flow_actions": [
+    "Buy",
+    "Sell",
+    "Redemption",
+    "Dividend",
+    "Dividend Received",
+    "Dividend/Interest",
+    "Reinvestment",
+    "Interest",
+    "Margin Interest",
+    "Capital Gain",
+    "Capital gain (LT)",
+    "Capital gain (ST)",
+    "Return Of Capital",
+    "Revenue Credit",
+    "Income",
+    "Fee",
+    "Tax",
+    "Core Fund Activity"
+  ]
+}
