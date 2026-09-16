@@ -37,6 +37,23 @@ var ScriptsFS embed.FS
 //go:embed tests
 var TestsFS embed.FS
 
+// DemoFS holds the bundled example household's statements: six brokerage
+// statements and two credit-card statements for a household that does not
+// exist, produced by tests/generators/gen-demo-household.py.
+//
+// Shipped as PDFs the user INGESTS rather than as rows loaded straight
+// into a database, because the parse is both the step people doubt and
+// the step that convinces them. Someone trying Orby without handing it
+// their own money should still watch it recognise an institution, pull
+// out positions, and answer from them - a loader that skipped all that
+// would prove only that we can render a table.
+//
+//go:embed demo
+var DemoFS embed.FS
+
+// WriteDemo writes the demo/ tree (minus the "demo/" prefix) into dir.
+func WriteDemo(dir string) error { return writeTree(DemoFS, "demo", dir) }
+
 // WriteScripts writes the scripts/ tree (minus the "scripts/" prefix)
 // into dir. Existing files are overwritten.
 func WriteScripts(dir string) error { return writeTree(ScriptsFS, "scripts", dir) }
