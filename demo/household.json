@@ -1,0 +1,67 @@
+{
+  "_doc": [
+    "The example household's own facts - the things a statement cannot carry.",
+    "",
+    "Statements say what was bought, sold and held. They do not say whether a",
+    "household files jointly, which state taxes it, or what the rest of its",
+    "income is - and every tax threshold turns on the first, the state figure",
+    "on the second, and where a gain lands on the third. So the demo seeds",
+    "these, or it can answer 'what do I own' and nothing about what it costs.",
+    "",
+    "WHY THIS FILE RATHER THAN CONSTANTS ON EITHER SIDE. The generator builds",
+    "statements around these numbers and asserts the lessons still land; Orby",
+    "reads the same file to seed the project's profile. Two copies would drift,",
+    "and the failure would be quiet: the household would still look plausible",
+    "while the headroom the onboarding copy quotes stopped being true.",
+    "",
+    "INVENTED, like everything else here. The project carrying this profile is",
+    "marked as an example, and every surface that shows it says so."
+  ],
+
+  "filing_status": "married_joint",
+
+  "_state_doc": [
+    "Stored, and currently unused: state rules are not built, so answers say",
+    "'federal only' whichever state this is. It is filled in because the",
+    "onboarding asks for it, and a demo profile with a blank field teaches",
+    "that the field does not matter."
+  ],
+  "state": "CA",
+
+  "_birth_year_doc": [
+    "Both 63 in 2026, which is the age that makes the IRMAA lesson bite: the",
+    "premium surcharge is set by income from TWO YEARS EARLIER, so what this",
+    "household does this year decides what it pays at 65. A household already",
+    "on Medicare would make the same point less sharply - the decision would",
+    "already be behind them.",
+    "",
+    "Year, never a date. Every age rule in tax law is annual, so the day and",
+    "month buy nothing and are a primary identifier - see the onboarding",
+    "design's note on what the profile deliberately does not hold."
+  ],
+  "birth_year_primary": 1963,
+  "birth_year_spouse": 1963,
+
+  "dependents": 0,
+
+  "_income_doc": [
+    "Prior-year taxable income. With the 2026 married-joint standard deduction",
+    "of 32,200 this puts MAGI at 212,200 against a first IRMAA tier of",
+    "218,000 - leaving 5,800 of headroom, against 31,400 to the next ordinary",
+    "bracket and 37,800 to the investment surtax.",
+    "",
+    "That ordering is the whole point of the household: the NEAREST tax line",
+    "is a cliff, not a slope, and it costs 2,296.80 a year for the couple to",
+    "cross by a dollar. gen-demo-household.py asserts the headroom still lands",
+    "in range, so an edit here that broke the lesson fails rather than quietly",
+    "making the product's own teaching copy wrong."
+  ],
+  "prior_year_taxable_income": 180000.00,
+
+  "_derived": {
+    "_doc": "Checked by the generator, not read at runtime - they are what the numbers above are FOR.",
+    "standard_deduction_mfj_2026": 32200.00,
+    "irmaa_tier1_mfj_2026": 218000.00,
+    "expected_irmaa_headroom": 5800.00
+  }
+}

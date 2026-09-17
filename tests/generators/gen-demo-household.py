@@ -28,6 +28,7 @@ confidently.
 Regenerate with:  python3 tests/generators/gen-demo-household.py
 """
 
+import json
 import os
 from datetime import date
 
@@ -50,9 +51,17 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "demo
 #   Headroom: 5,800. The 24% bracket is 31,400 away and NIIT 37,800 away,
 #   so the NEAREST line is a cliff rather than a slope - which is the
 #   single most useful thing this product teaches.
-PRIOR_YEAR_TAXABLE_INCOME = 180_000.00
-STD_DEDUCTION_MFJ_2026 = 32_200.00
-IRMAA_TIER1_MFJ_2026 = 218_000.00
+# Read from demo/household.json rather than restated here: Orby seeds the
+# project's profile from that same file, and two copies of a household's
+# income would drift silently - the statements would still look plausible
+# while the headroom the onboarding copy quotes stopped being true.
+with open(os.path.join(OUT, "household.json"), encoding="utf-8") as _f:
+    HOUSEHOLD = json.load(_f)
+
+PRIOR_YEAR_TAXABLE_INCOME = HOUSEHOLD["prior_year_taxable_income"]
+STD_DEDUCTION_MFJ_2026 = HOUSEHOLD["_derived"]["standard_deduction_mfj_2026"]
+IRMAA_TIER1_MFJ_2026 = HOUSEHOLD["_derived"]["irmaa_tier1_mfj_2026"]
+EXPECTED_HEADROOM = HOUSEHOLD["_derived"]["expected_irmaa_headroom"]
 
 INSTITUTION = "Vantage Brokerage"
 
@@ -414,7 +423,9 @@ def check():
     # 1. The nearest tax line is a cliff, not a bracket.
     magi = PRIOR_YEAR_TAXABLE_INCOME + STD_DEDUCTION_MFJ_2026
     headroom = IRMAA_TIER1_MFJ_2026 - magi
-    assert 4_000 <= headroom <= 8_000, f"IRMAA headroom is {headroom:,.0f}, want roughly 5-6k"
+    assert abs(headroom - EXPECTED_HEADROOM) < 0.01, (
+        f"IRMAA headroom is {headroom:,.2f} but household.json says {EXPECTED_HEADROOM:,.2f} - "
+        f"the profile Orby seeds and the lesson the copy quotes have come apart")
 
     # 2. One position dominates the taxable account, with a large gain.
     acct, _type, holdings = ACCOUNTS[0]
