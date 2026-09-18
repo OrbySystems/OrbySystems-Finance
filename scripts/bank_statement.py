@@ -102,9 +102,11 @@ every bundled bank/credit-card parser predates brokerage support:
             # the exact required/optional keys per table. See
             # institutions/sample_brokerage.py for a worked example.
 
-and register it in _PARSERS below (checked in order; first match wins,
-regardless of kind - a bank and a brokerage statement are distinguished
-by their own header text, not by position in this list).
+The module is registered automatically: _PARSERS below discovers every
+institutions/*.py file exposing detect()/parse(), ordered by (PRIORITY,
+filename). First match wins regardless of kind - a bank and a brokerage
+statement are distinguished by their own header text, not by position in a
+manual list.
 
 Alternatively, for a parser that shouldn't live in this repo (no code
 change/recompile needed), drop a .py file exposing the same detect/parse

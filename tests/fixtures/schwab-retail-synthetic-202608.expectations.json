@@ -1,0 +1,29 @@
+{
+  "file": "schwab-retail-synthetic-202608.pdf",
+  "institution": "Charles Schwab",
+  "statementDate": "2026-08-31",
+  "account": "9999",
+  "accountType": "Brokerage",
+  "endingValue": 128304.85,
+  "positions": {
+    "CASH": 7064.85,
+    "ALPH": 42550.0,
+    "BRVO": 31250.0,
+    "QWAV": 28620.0,
+    "111111SY1": 17820.0,
+    "QWAV260918C100": 1000.0
+  },
+  "transactionCount": 11,
+  "transactionTotals": {
+    "corporate_action": 0.0,
+    "buy": -4220.0,
+    "sell": 2400.0,
+    "dividend": 220.0,
+    "interest": 19.85,
+    "deposit": 10000.0,
+    "withdrawal": -2500.0,
+    "fee": -75.0
+  },
+  "pendingSymbolExcluded": "PEND",
+  "closingSweepBalance": 7064.85
+}
