@@ -256,12 +256,17 @@ def main() -> None:
     if kind_filter:
         parsers = [m for m in parsers if parser_common.module_kind(m) == kind_filter]
 
+    input_stats = {}
     try:
         with pdfplumber.open(pdf_path) as pdf:
             # Check only the first few pages before doing any real work:
             # fail early if this isn't a supported statement format.
             head_text = [p.extract_text() or "" for p in pdf.pages[:_DETECT_PAGE_COUNT]]
             joined_head_text = "\n".join(head_text)
+            input_stats = {
+                "pageCount": len(pdf.pages),
+                "textPageCount": sum(1 for text in head_text if text.strip()),
+            }
             module, reason = parser_common.detect(lambda m: m.detect(joined_head_text), parsers)
             if msg := parser_common.check_expected_parser(module, reason, expected_parser):
                 print(json.dumps({"error": msg}))
@@ -269,10 +274,15 @@ def main() -> None:
             if module is None:
                 if extra_misses:
                     reason = "; ".join([reason] + extra_misses) if reason else "; ".join(extra_misses)
-                print(json.dumps({"detected": False, "reason": reason}))
+                print(json.dumps({
+                    "detected": False,
+                    "reason": reason,
+                    "diagnostic": parser_common.unsupported_format_diagnostic("pdf", input_stats),
+                }))
                 return
 
             tail_text = [p.extract_text() or "" for p in pdf.pages[_DETECT_PAGE_COUNT:]]
+            input_stats["textPageCount"] += sum(1 for text in tail_text if text.strip())
             pages_text = [t for t in head_text + tail_text if t]
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"error": f"failed to read PDF: {e}"}))
@@ -281,7 +291,10 @@ def main() -> None:
     try:
         result = _parse_matched(module, pages_text, pdf_path, vision)
     except Exception as e:  # noqa: BLE001
-        print(json.dumps({"error": f"failed to parse statement: {e}"}))
+        message, diagnostic = parser_common.parser_failure(
+            module, e, "pdf", input_stats, "\n".join(pages_text)
+        )
+        print(json.dumps({"error": message, "diagnostic": diagnostic}))
         sys.exit(1)
 
     result["detected"] = True

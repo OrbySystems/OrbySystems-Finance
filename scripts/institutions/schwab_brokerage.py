@@ -20,10 +20,32 @@ import pdfplumber
 import parser_common
 
 from . import common
+from . import diagnostic_helpers
 
 
 KIND = parser_common.KIND_BROKERAGE
 INSTITUTION = "Charles Schwab"
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+DIAGNOSTIC_MARKERS = {
+    "account_summary": "Account Summary",
+    "holdings": "Positions",
+    "activity_summary": "Transaction Summary",
+    "activity": "Transactions",
+    "cash_sweep": "Bank Sweep",
+}
+DIAGNOSTIC_FIELDS = {
+    "beginningValue": "Beginning Value",
+    "endingValue": "Ending Value",
+    "totalPositions": "Total Positions",
+    "beginningCash": "Beginning Cash",
+    "endingCash": "Ending Cash",
+    "bankSweepBeginning": "Beginning Balance",
+    "bankSweepEnding": "Ending Balance",
+}
+DIAGNOSTIC_SIGNALS = diagnostic_helpers.DIAGNOSTIC_SIGNALS
+DIAGNOSTIC_COUNTS = diagnostic_helpers.DIAGNOSTIC_COUNTS
+DIAGNOSTIC_TERMS = diagnostic_helpers.DIAGNOSTIC_TERMS
+PARSER_REVISION = 1
 
 _MONEY = r"(?:\(?-?\$?[\d,]+\.\d{2}\)?)"
 _NUMBER = r"(?:-?[\d,]+(?:\.\d+)?)"
@@ -114,7 +136,19 @@ def _close(a: float, b: float, tolerance: float = 0.02) -> bool:
 
 def _require_close(label: str, parsed: float, printed: float) -> None:
     if not _close(parsed, printed):
-        raise ValueError(f"{label} does not reconcile: parsed {parsed:.2f}, printed {printed:.2f}")
+        lower = label.casefold()
+        if "position" in lower:
+            stage = "holdings"
+        elif "cash" in lower or "transaction" in lower or "sweep" in lower:
+            stage = "activity"
+        else:
+            stage = "summary"
+        raise diagnostic_helpers.reconciliation_error(
+            f"{label} does not reconcile: parsed {parsed:.2f}, printed {printed:.2f}",
+            parsed,
+            printed,
+            stage,
+        )
 
 
 def _statement_period(text: str) -> tuple[date, date]:
@@ -399,7 +433,12 @@ def _parse_holdings(
             last_holding["description"] = f"{last_holding['description']} {line}".strip()
 
     if printed_total is None:
-        raise ValueError("Total Positions control total not found")
+        raise parser_common.ParserDiagnosticError(
+            "Total Positions control total not found",
+            code="PARSER_REQUIRED_DATA_MISSING",
+            stage="holdings",
+            missing_fields=("totalPositions",),
+        )
     _require_close("Positions", sum(h.get("current_value") or 0.0 for h in holdings), printed_total)
     return holdings, printed_total
 
@@ -898,6 +937,10 @@ def _reconcile_sweep(lines: list[str], start: date, end: date) -> None:
         _require_close("Bank Sweep Ending Balance", running, ending)
 
 
+@diagnostic_helpers.repair_grade(
+    section_markers=tuple(DIAGNOSTIC_MARKERS.values()),
+    known_labels=tuple(DIAGNOSTIC_FIELDS.values()),
+)
 def parse(pages_text: list[str], pdf_path: str) -> dict:
     text = "\n".join(pages_text)
     lines = [line.rstrip() for page in pages_text for line in page.splitlines()]
