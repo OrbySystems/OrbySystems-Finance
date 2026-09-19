@@ -17,6 +17,138 @@ import parser_common
 from institutions import common
 
 KIND = parser_common.KIND_BROKERAGE
+SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+PARSER_REVISION = 5
+
+DIAGNOSTIC_MARKERS = {
+    "account_summary": "Your Account Summary",
+    "holdings": "Market Value of Your Account",
+    "contributions": "Your Contribution Summary",
+    "account_activity": "Your Account Activity",
+    "account_information": "Your Account Information",
+}
+DIAGNOSTIC_FIELDS = {
+    "beginningBalance": "Beginning Balance",
+    "exchangeIn": "Exchange In",
+    "exchangeOut": "Exchange Out",
+    "exchange": "Exchange",
+    "revenueCredit": "Revenue Credit",
+    "changeInMarketValue": "Change In Market Value",
+    "endingBalance": "Ending Balance",
+}
+
+_ACTIVITY_SIGNAL_PATTERNS = {
+    "beginningBalance": re.compile(r"^Beginning Balance\b", re.I),
+    "endingBalance": re.compile(r"^Ending Balance\b", re.I),
+    "changeInMarketValue": re.compile(r"^(?:Change In Market Value|Investment Gain/?Loss)\b", re.I),
+    "exchangeIn": re.compile(r"^Exchanges? In\b", re.I),
+    "exchangeOut": re.compile(r"^Exchanges? Out\b", re.I),
+    "exchange": re.compile(r"^Exchanges?\b", re.I),
+    "revenueCredit": re.compile(r"^Revenue Credit\b", re.I),
+    "fees": re.compile(r"^(?:Fees?|Plan Expenses?)\b", re.I),
+    "dividendsInterest": re.compile(
+        r"^(?:Dividends?(?:\s*(?:&|and|/)\s*|\s+)Interest|Interest(?:\s*(?:&|and|/)\s*|\s+)Dividends?)\b",
+        re.I,
+    ),
+    "contributions": re.compile(r"\bContributions?\b", re.I),
+    "employerContributions": re.compile(r"^(?:Employer|Company)(?:\s+Matching?)?(?:\s+Contributions?|\s+Match)\b", re.I),
+    "employeeDeferrals": re.compile(r"^(?:Employee|Participant)(?:\s+Elective)?\s+Deferrals?\b", re.I),
+    "rolloverIn": re.compile(r"^(?:Rollover|Roll In)(?:\s+Contributions?)?\s+In\b|^Rollover Contributions?\b", re.I),
+    "rolloverOut": re.compile(r"^(?:Rollover|Roll Out)\s+Out\b", re.I),
+    "transferIn": re.compile(r"^(?:Transfer|Transfers) In\b", re.I),
+    "transferOut": re.compile(r"^(?:Transfer|Transfers) Out\b", re.I),
+    "loanRepayment": re.compile(r"^Loan Repayments?\b", re.I),
+    "loanProceeds": re.compile(r"^(?:Loan Proceeds|Loan Disbursements?)\b", re.I),
+    "withdrawals": re.compile(r"^Withdrawals?\b", re.I),
+    "distributions": re.compile(r"^Distributions?\b", re.I),
+    "refunds": re.compile(r"^Refunds?\b", re.I),
+    "forfeitures": re.compile(r"^Forfeitures?\b", re.I),
+    "adjustments": re.compile(r"^Adjustments?\b", re.I),
+    "otherActivity": re.compile(r"^Other(?: Account)? Activity\b", re.I),
+    "deposits": re.compile(r"^(?:Other )?Deposits?\b", re.I),
+    "credits": re.compile(r"^(?:Other )?Credits?\b", re.I),
+    "debits": re.compile(r"^(?:Other )?Debits?\b", re.I),
+    "purchases": re.compile(r"^Purchases?\b", re.I),
+    "sales": re.compile(r"^Sales?\b", re.I),
+    "corrections": re.compile(r"^Corrections?\b", re.I),
+}
+_ACTIVITY_LAYOUT_SIGNALS = (
+    "activityMatrix",
+    "leadingMinusAmounts",
+    "parenthesizedNegativeAmounts",
+)
+DIAGNOSTIC_SIGNALS = tuple(_ACTIVITY_SIGNAL_PATTERNS) + _ACTIVITY_LAYOUT_SIGNALS
+DIAGNOSTIC_COUNTS = (
+    "activityLabelRows",
+    "recognizedActivityLabels",
+    "unclassifiedActivityLabels",
+    "parsedActivityComponents",
+    "emittedActivityRows",
+    "holdingsParsed",
+    "maxAmountsPerActivityRow",
+    "negativeActivityRows",
+    "unclassifiedPositiveLabels",
+    "unclassifiedNegativeLabels",
+    "unclassifiedZeroLabels",
+    "unclassifiedLabelWords",
+    "textActivityComponents",
+    "positionedActivityComponents",
+    "reconciliationCandidates",
+)
+
+_SAFE_UNCLASSIFIED_TERM_PATTERNS = {
+    "administrative": re.compile(r"\badministrative\b", re.I),
+    "adjustment": re.compile(r"\badjustments?\b", re.I),
+    "allocation": re.compile(r"\ballocations?\b", re.I),
+    "award": re.compile(r"\bawards?\b", re.I),
+    "benefit": re.compile(r"\bbenefits?\b", re.I),
+    "cash": re.compile(r"\bcash\b", re.I),
+    "charge": re.compile(r"\bcharges?\b", re.I),
+    "company": re.compile(r"\bcompany\b", re.I),
+    "contribution": re.compile(r"\bcontributions?\b", re.I),
+    "conversion": re.compile(r"\bconversions?\b", re.I),
+    "correction": re.compile(r"\bcorrections?\b", re.I),
+    "credit": re.compile(r"\bcredits?\b", re.I),
+    "debit": re.compile(r"\bdebits?\b", re.I),
+    "deferral": re.compile(r"\bdeferrals?\b", re.I),
+    "deposit": re.compile(r"\bdeposits?\b", re.I),
+    "distribution": re.compile(r"\bdistributions?\b", re.I),
+    "dividend": re.compile(r"\bdividends?\b", re.I),
+    "earnings": re.compile(r"\bearnings?\b", re.I),
+    "employee": re.compile(r"\bemployee\b", re.I),
+    "employer": re.compile(r"\bemployer\b", re.I),
+    "exchange": re.compile(r"\bexchanges?\b", re.I),
+    "expense": re.compile(r"\bexpenses?\b", re.I),
+    "fee": re.compile(r"\bfees?\b", re.I),
+    "forfeiture": re.compile(r"\bforfeitures?\b", re.I),
+    "gain": re.compile(r"\bgains?\b", re.I),
+    "income": re.compile(r"\bincome\b", re.I),
+    "interest": re.compile(r"\binterest\b", re.I),
+    "investment": re.compile(r"\binvestments?\b", re.I),
+    "loan": re.compile(r"\bloans?\b", re.I),
+    "loss": re.compile(r"\bloss(?:es)?\b", re.I),
+    "match": re.compile(r"\bmatch(?:es|ing)?\b", re.I),
+    "miscellaneous": re.compile(r"\bmisc(?:ellaneous)?\b", re.I),
+    "net": re.compile(r"\bnet\b", re.I),
+    "other": re.compile(r"\bother\b", re.I),
+    "participant": re.compile(r"\bparticipant\b", re.I),
+    "payment": re.compile(r"\bpayments?\b", re.I),
+    "plan": re.compile(r"\bplan\b", re.I),
+    "purchase": re.compile(r"\bpurchases?\b", re.I),
+    "receipt": re.compile(r"\breceipts?\b", re.I),
+    "rebalance": re.compile(r"\brebalanc(?:e|ed|es|ing)\b", re.I),
+    "redemption": re.compile(r"\bredemptions?\b", re.I),
+    "refund": re.compile(r"\brefunds?\b", re.I),
+    "repayment": re.compile(r"\brepayments?\b", re.I),
+    "rollover": re.compile(r"\brollovers?\b", re.I),
+    "sale": re.compile(r"\bsales?\b", re.I),
+    "service": re.compile(r"\bservice\b", re.I),
+    "settlement": re.compile(r"\bsettlements?\b", re.I),
+    "stock": re.compile(r"\bstock\b", re.I),
+    "transfer": re.compile(r"\btransfers?\b", re.I),
+    "withdrawal": re.compile(r"\bwithdrawals?\b", re.I),
+}
+DIAGNOSTIC_TERMS = tuple(_SAFE_UNCLASSIFIED_TERM_PATTERNS)
 
 _INSTITUTION = "Fidelity NetBenefits"
 _ACCOUNT_TYPE = "401(k)"
@@ -66,12 +198,37 @@ _TOTAL_LABELS = {
     "Beginning Balance": None,
     "Exchange In": ("Transfer In", "internal_transfer", "transfer"),
     "Exchange Out": ("Transfer Out", "internal_transfer", "transfer"),
+    "Exchange": ("Exchange", "internal_transfer", "transfer"),
     "Revenue Credit": ("Revenue Credit", "income", "other_income"),
     "Dividends & Interest": ("Dividend/Interest", "dividend", "interest"),
 }
-_ACTIVITY_LABELS = tuple(_TOTAL_LABELS) + ("Change In Market Value", "Ending Balance")
+_ACTIVITY_LABEL_ALIASES = {
+    "Beginning Balance": "Beginning Balance",
+    "Exchange In": "Exchange In",
+    "Exchanges In": "Exchange In",
+    "Exchange Out": "Exchange Out",
+    "Exchanges Out": "Exchange Out",
+    "Exchange": "Exchange",
+    "Exchanges": "Exchange",
+    "Fees": "Revenue Credit",
+    "Revenue Credit": "Revenue Credit",
+    "Change In Market Value": "Change In Market Value",
+    "Investment Gain/Loss": "Change In Market Value",
+    "Ending Balance": "Ending Balance",
+    "Dividends & Interest": "Dividends & Interest",
+    "Dividend & Interest": "Dividends & Interest",
+    "Dividends and Interest": "Dividends & Interest",
+    "Dividend and Interest": "Dividends & Interest",
+    "Dividends/Interest": "Dividends & Interest",
+    "Dividend/Interest": "Dividends & Interest",
+    "Interest and Dividends": "Dividends & Interest",
+    "Interest & Dividends": "Dividends & Interest",
+}
+_ACTIVITY_LABEL_LOOKUP = {label.casefold(): canonical for label, canonical in _ACTIVITY_LABEL_ALIASES.items()}
+_ACTIVITY_LABEL_VARIANTS = tuple(sorted(_ACTIVITY_LABEL_ALIASES, key=len, reverse=True))
 _SUMMARY_LABEL_RE = re.compile(
-    r"^(Beginning Balance|Exchange In|Exchange Out|Fees|Revenue Credit|Change In Market Value|Ending Balance|Dividends & Interest)\s+(.+)$"
+    rf"^({'|'.join(re.escape(label) for label in _ACTIVITY_LABEL_VARIANTS)})\s+(.+)$",
+    re.I,
 )
 
 
@@ -188,12 +345,117 @@ def _activity_totals(lines: list[str]) -> dict[str, float]:
         match = _SUMMARY_LABEL_RE.match(line)
         if not match:
             continue
-        label, rest = match.groups()
+        raw_label, rest = match.groups()
         amounts = [_money(token) for token in _MONEY_RE.findall(rest)]
         if amounts:
-            normalized = "Revenue Credit" if label == "Fees" else label
-            totals[normalized] = amounts[-1]
+            totals[_ACTIVITY_LABEL_LOOKUP[raw_label.casefold()]] = amounts[-1]
     return totals
+
+
+def _activity_scope_lines(lines: list[str]) -> list[str]:
+    """Return only summary/activity lines used for safe structural signals.
+
+    This excludes contribution elections, holdings, account information, and
+    disclosures so a word such as "contribution" is only reported when it is
+    part of the statement-period activity equation.
+    """
+    scoped: list[str] = []
+    section = ""
+    for raw_line in lines:
+        line = re.sub(r"\s+", " ", raw_line.strip())
+        if line.startswith("Your Account Summary"):
+            section = "summary"
+            continue
+        if line == "Account Activity" or line.startswith("Your Account Activity"):
+            section = "activity"
+            continue
+        if section == "summary" and (
+            line.startswith("Additional Information")
+            or line.startswith("Your Personal Rate of Return")
+            or line.startswith("Your Asset Allocation")
+            or line.startswith("Market Value of Your Account")
+            or line.startswith("Your Contribution Summary")
+        ):
+            section = ""
+            continue
+        if section == "activity" and (
+            line.startswith("Revenue Credit represents")
+            or line.startswith("Your Account Information")
+            or line.startswith("Additional Fund Information")
+        ):
+            section = ""
+            continue
+        if section and line:
+            scoped.append(line)
+    return scoped
+
+
+def _activity_diagnostic_context(
+    lines: list[str],
+) -> tuple[dict[str, bool], dict[str, int], list[str]]:
+    """Build content-free diagnostics from activity-table row labels.
+
+    Raw labels never leave this function. Reports receive only fixed category
+    booleans and aggregate row counts declared in the module allowlists.
+    """
+    labels: set[str] = set()
+    matched_labels: set[str] = set()
+    signals = {name: False for name in DIAGNOSTIC_SIGNALS}
+    max_amounts = 0
+    negative_rows = 0
+    unclassified_signs: dict[str, int] = {}
+    unclassified_terms: set[str] = set()
+    unclassified_word_counts: dict[str, int] = {}
+
+    for line in _activity_scope_lines(lines):
+        amounts = list(_MONEY_RE.finditer(line))
+        if not amounts:
+            continue
+        amount = amounts[0]
+        label = line[: amount.start()].strip(" :-")
+        if not label or label.startswith("Statement Period"):
+            continue
+        normalized = label.lower()
+        labels.add(normalized)
+        max_amounts = max(max_amounts, len(amounts))
+        if len(amounts) > 1:
+            signals["activityMatrix"] = True
+        if "-$" in line or "$-" in line:
+            signals["leadingMinusAmounts"] = True
+            negative_rows += 1
+        elif re.search(r"\(\s*\$[\d,]+\.\d{2}\s*\)", line):
+            signals["parenthesizedNegativeAmounts"] = True
+            negative_rows += 1
+        row_matched = False
+        for name, pattern in _ACTIVITY_SIGNAL_PATTERNS.items():
+            if pattern.search(label):
+                signals[name] = True
+                row_matched = True
+        if row_matched:
+            matched_labels.add(normalized)
+        else:
+            total_token = amounts[-1].group()
+            total_value = _money(total_token)
+            if re.search(rf"\(\s*{re.escape(total_token)}\s*\)", line):
+                total_value = -abs(total_value)
+            unclassified_signs[normalized] = 1 if total_value > _EPS else -1 if total_value < -_EPS else 0
+            unclassified_word_counts[normalized] = len(re.findall(r"[A-Za-z]+", label))
+            for term, pattern in _SAFE_UNCLASSIFIED_TERM_PATTERNS.items():
+                if pattern.search(label):
+                    unclassified_terms.add(term)
+
+    counts = {
+        "activityLabelRows": len(labels),
+        "recognizedActivityLabels": len(matched_labels),
+        "unclassifiedActivityLabels": len(labels - matched_labels),
+        "maxAmountsPerActivityRow": max_amounts,
+        "negativeActivityRows": negative_rows,
+        "unclassifiedPositiveLabels": sum(1 for sign in unclassified_signs.values() if sign > 0),
+        "unclassifiedNegativeLabels": sum(1 for sign in unclassified_signs.values() if sign < 0),
+        "unclassifiedZeroLabels": sum(1 for sign in unclassified_signs.values() if sign == 0),
+        "unclassifiedLabelWords": sum(unclassified_word_counts.values()),
+    }
+    return signals, counts, sorted(unclassified_terms)
 
 
 def _label_and_amounts(line: str) -> tuple[str, list[float]] | None:
@@ -201,11 +463,11 @@ def _label_and_amounts(line: str) -> tuple[str, list[float]] | None:
     match = _SUMMARY_LABEL_RE.match(line)
     if not match:
         return None
-    label, rest = match.groups()
+    raw_label, rest = match.groups()
     amounts = [_money(token) for token in _MONEY_RE.findall(rest)]
     if not amounts:
         return None
-    return ("Revenue Credit" if label == "Fees" else label), amounts
+    return _ACTIVITY_LABEL_LOOKUP[raw_label.casefold()], amounts
 
 
 def _split_activity_names(header_lines: list[str], width: int) -> list[str]:
@@ -248,9 +510,14 @@ def _make_activity_txn(statement_date: str, label: str, description: str, amount
     if classification is None or abs(amount) <= _EPS:
         return None
     action, transaction_type, subtype = classification
+    display_label = label
+    if label == "Exchange":
+        direction = "In" if amount > 0 else "Out"
+        action = f"Transfer {direction}"
+        display_label = f"Exchange {direction}"
     return {
         "date": statement_date,
-        "description": f"{label} - {description or 'Unknown Investment'}",
+        "description": f"{display_label} - {description or 'Unknown Investment'}",
         "amount": amount,
         "action": action,
         "transaction_type": transaction_type,
@@ -309,9 +576,9 @@ def _money_words(words: list[dict]) -> list[dict]:
 def _row_label(words: list[dict]) -> str | None:
     label_words = [w["text"] for w in words if w["x0"] < 225 and not _MONEY_RE.fullmatch(w["text"])]
     label = " ".join(label_words)
-    for candidate in _ACTIVITY_LABELS:
-        if label.startswith(candidate):
-            return candidate
+    for candidate in _ACTIVITY_LABEL_VARIANTS:
+        if re.match(rf"^{re.escape(candidate)}(?:\s|$)", label, re.I):
+            return _ACTIVITY_LABEL_ALIASES[candidate]
     return None
 
 
@@ -358,12 +625,22 @@ def _column_names(header_rows: list[tuple[float, list[dict]]], amount_words: lis
     return names
 
 
-def _parse_detailed_activity_pdf(pdf_path: str, statement_date: str) -> list[dict]:
+def _positioned_total(names: list[str], amount_words: list[dict]) -> float | None:
+    if len(names) != len(amount_words):
+        return None
+    for name, amount_word in zip(names, amount_words):
+        if name.strip().casefold() == "total":
+            return _money(amount_word["text"])
+    return None
+
+
+def _parse_detailed_activity_pdf(pdf_path: str, statement_date: str) -> tuple[list[dict], dict[str, float]]:
     txns: list[dict] = []
+    totals: dict[str, float] = {}
     try:
         pdf = pdfplumber.open(pdf_path)
     except Exception:  # noqa: BLE001 - text fallback below can still parse simple fixtures.
-        return txns
+        return txns, totals
 
     with pdf:
         for page in pdf.pages:
@@ -391,9 +668,15 @@ def _parse_detailed_activity_pdf(pdf_path: str, statement_date: str) -> list[dic
                         names = []
                         continue
                     names = _column_names(header_rows, amount_words)
+                    total = _positioned_total(names, amount_words)
+                    if total is not None:
+                        totals[label] = total
                     continue
                 if not names:
                     continue
+                total = _positioned_total(names, amount_words)
+                if total is not None:
+                    totals[label] = total
                 for name, amount_word in zip(names, amount_words):
                     if name == "Total":
                         continue
@@ -405,20 +688,28 @@ def _parse_detailed_activity_pdf(pdf_path: str, statement_date: str) -> list[dic
                 if label == "Dividends & Interest":
                     block_start = i + 1
                     names = []
-    return txns
+    return txns, totals
 
 
-def _parse_activity(pages_text: list[str], pdf_path: str, statement_date: str) -> tuple[list[dict], dict[str, float]]:
+def _parse_activity(
+    pages_text: list[str], pdf_path: str, statement_date: str
+) -> tuple[list[dict], dict[str, float], dict[str, bool], dict[str, int], list[str]]:
     # Prefer the per-investment Account Activity page's Total column.  If
     # that page is absent, the first-page account summary uses "Fees" for
     # the same positive revenue-credit line.
     all_lines = [line for text in pages_text for line in text.splitlines()]
-    totals = _activity_totals(all_lines)
-    txns = _parse_detailed_activity_pdf(pdf_path, statement_date)
+    text_totals = _activity_totals(all_lines)
+    diagnostic_signals, diagnostic_counts, diagnostic_terms = _activity_diagnostic_context(all_lines)
+    txns, positioned_totals = _parse_detailed_activity_pdf(pdf_path, statement_date)
+    totals = {**text_totals, **positioned_totals}
+    diagnostic_counts["textActivityComponents"] = len(text_totals)
+    diagnostic_counts["positionedActivityComponents"] = len(positioned_totals)
+    diagnostic_counts["parsedActivityComponents"] = len(totals)
     if not txns:
         txns = _parse_detailed_activity(all_lines, statement_date)
     if txns:
-        return txns, totals
+        diagnostic_counts["emittedActivityRows"] = len(txns)
+        return txns, totals, diagnostic_signals, diagnostic_counts, diagnostic_terms
 
     txns = []
     for label, classification in _TOTAL_LABELS.items():
@@ -436,32 +727,87 @@ def _parse_activity(pages_text: list[str], pdf_path: str, statement_date: str) -
                 "currency_code": "USD",
             }
         )
-    return txns, totals
+    diagnostic_counts["emittedActivityRows"] = len(txns)
+    return txns, totals, diagnostic_signals, diagnostic_counts, diagnostic_terms
 
 
-def _validate(holdings: list[dict], holding_total: float | None, activity_totals: dict[str, float]) -> None:
+def _validate(
+    holdings: list[dict],
+    holding_total: float | None,
+    activity_totals: dict[str, float],
+    diagnostic_signals: dict[str, bool],
+    diagnostic_counts: dict[str, int],
+    diagnostic_terms: list[str],
+) -> None:
     if holding_total is not None:
         parsed_total = round(sum(h.get("current_value", 0.0) for h in holdings), 2)
         if abs(parsed_total - holding_total) > _EPS:
-            raise ValueError(
-                f"holdings current value total {parsed_total:.2f} does not match printed Account Totals {holding_total:.2f}"
+            raise parser_common.ParserDiagnosticError(
+                f"holdings current value total {parsed_total:.2f} does not match printed Account Totals {holding_total:.2f}",
+                code="PARSER_RECONCILIATION_FAILED",
+                stage="holdings",
+                signals=diagnostic_signals,
+                counts=diagnostic_counts,
+                unclassified_terms=diagnostic_terms,
             )
 
-    required = {"Beginning Balance", "Exchange In", "Exchange Out", "Revenue Credit", "Change In Market Value", "Ending Balance"}
-    missing = sorted(required - set(activity_totals))
+    # NetBenefits omits activity rows whose value is zero. Beginning and ending
+    # balances are the only controls that must always be printed; absent known
+    # flow rows therefore contribute zero to the reconciliation below.
+    required = {
+        "Beginning Balance": "beginningBalance",
+        "Ending Balance": "endingBalance",
+    }
+    missing = [field_id for label, field_id in required.items() if label not in activity_totals]
     if missing:
-        raise ValueError(f"missing account activity total(s): {missing}")
-    expected_end = round(
+        raise parser_common.ParserDiagnosticError(
+            f"missing account activity control total(s): {missing}",
+            code="PARSER_REQUIRED_DATA_MISSING",
+            stage="activity",
+            missing_fields=missing,
+            signals=diagnostic_signals,
+            counts=diagnostic_counts,
+            unclassified_terms=diagnostic_terms,
+        )
+    exchange_total = activity_totals.get("Exchange", 0.0)
+    if abs(exchange_total) > _EPS:
+        raise parser_common.ParserDiagnosticError(
+            f"generic Exchange activity does not net to zero: {exchange_total:.2f}",
+            code="PARSER_RECONCILIATION_FAILED",
+            stage="activity",
+            signals=diagnostic_signals,
+            counts=diagnostic_counts,
+            unclassified_terms=diagnostic_terms,
+        )
+    base_expected_end = round(
         activity_totals["Beginning Balance"]
-        + activity_totals["Exchange In"]
-        + activity_totals["Exchange Out"]
-        + activity_totals["Revenue Credit"]
-        + activity_totals["Change In Market Value"],
+        + activity_totals.get("Exchange In", 0.0)
+        + activity_totals.get("Exchange Out", 0.0)
+        + activity_totals.get("Revenue Credit", 0.0)
+        + activity_totals.get("Change In Market Value", 0.0),
         2,
     )
-    if abs(expected_end - activity_totals["Ending Balance"]) > _EPS:
-        raise ValueError(
-            f"activity totals reconcile to {expected_end:.2f}, not printed Ending Balance {activity_totals['Ending Balance']:.2f}"
+    expected_ends = [base_expected_end]
+    dividends = activity_totals.get("Dividends & Interest")
+    if dividends is not None and abs(dividends) > _EPS:
+        expected_ends.append(round(base_expected_end + dividends, 2))
+    diagnostic_counts["reconciliationCandidates"] = len(expected_ends)
+    printed_end = activity_totals["Ending Balance"]
+    best_expected_end = min(expected_ends, key=lambda value: abs(value - printed_end))
+    if abs(best_expected_end - printed_end) > _EPS:
+        direction = (
+            "printedEndingAboveParsedEquation"
+            if printed_end > best_expected_end
+            else "printedEndingBelowParsedEquation"
+        )
+        raise parser_common.ParserDiagnosticError(
+            f"activity totals reconcile to {best_expected_end:.2f}, not printed Ending Balance {printed_end:.2f}",
+            code="PARSER_RECONCILIATION_FAILED",
+            stage="activity",
+            signals=diagnostic_signals,
+            counts=diagnostic_counts,
+            unclassified_terms=diagnostic_terms,
+            reconciliation_direction=direction,
         )
 
 
@@ -471,8 +817,22 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
     account = _account(text)
 
     holdings, holding_total = _parse_holdings(pages_text)
-    brokerage_transactions, activity_totals = _parse_activity(pages_text, pdf_path, statement_date)
-    _validate(holdings, holding_total, activity_totals)
+    (
+        brokerage_transactions,
+        activity_totals,
+        diagnostic_signals,
+        diagnostic_counts,
+        diagnostic_terms,
+    ) = _parse_activity(pages_text, pdf_path, statement_date)
+    diagnostic_counts["holdingsParsed"] = len(holdings)
+    _validate(
+        holdings,
+        holding_total,
+        activity_totals,
+        diagnostic_signals,
+        diagnostic_counts,
+        diagnostic_terms,
+    )
 
     common.tag_account(holdings, account, _ACCOUNT_TYPE)
     common.tag_account(brokerage_transactions, account, _ACCOUNT_TYPE)

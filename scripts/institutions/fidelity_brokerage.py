@@ -134,8 +134,33 @@ import pdfplumber
 import parser_common
 
 from . import common
+from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
+SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+PARSER_REVISION = 1
+DIAGNOSTIC_MARKERS = {
+    "account_summary": "Account Summary",
+    "holdings": "Holdings",
+    "activity": "Activity",
+    "trades": "Securities Bought & Sold",
+    "income": "Dividends, Interest & Other Income",
+    "core_fund": "Core Fund Activity",
+}
+DIAGNOSTIC_FIELDS = {
+    "totalHoldings": "Total Holdings",
+    "totalBought": "Total Securities Bought",
+    "totalSold": "Total Securities Sold",
+    "totalIncome": "Total Dividends, Interest & Other Income",
+    "totalDeposits": "Total Deposits",
+    "totalWithdrawals": "Total Withdrawals",
+    "totalExchangesIn": "Total Exchanges In",
+    "totalExchangesOut": "Total Exchanges Out",
+    "totalCoreFundActivity": "Total Core Fund Activity",
+}
+DIAGNOSTIC_SIGNALS = diagnostic_helpers.DIAGNOSTIC_SIGNALS
+DIAGNOSTIC_COUNTS = diagnostic_helpers.DIAGNOSTIC_COUNTS
+DIAGNOSTIC_TERMS = diagnostic_helpers.DIAGNOSTIC_TERMS
 
 _INSTITUTION = "Fidelity Investments"
 # The type reported when the statement names no tax-advantaged wrapper -
@@ -918,9 +943,12 @@ def _check_holdings(holdings: list[dict], text: str) -> None:
     want = _amount(m.group(1))
     got = round(sum(h["current_value"] for h in holdings if h["current_value"] is not None), 2)
     if want is not None and abs(got - want) > _EPS:
-        raise ValueError(
+        raise diagnostic_helpers.reconciliation_error(
             f"parsed holdings total {got} does not match statement's "
-            f"'Total Holdings' {want} (off by {round(got - want, 2)})"
+            f"'Total Holdings' {want} (off by {round(got - want, 2)})",
+            got,
+            want,
+            "holdings",
         )
 
 
@@ -935,9 +963,12 @@ def _check_trades(trades: list[dict], text: str) -> None:
         want = _amount(m.group(1))
         got = round(sum(t["amount"] for t in trades if t["action"] == action), 2)
         if want is not None and abs(got - want) > _EPS:
-            raise ValueError(
+            raise diagnostic_helpers.reconciliation_error(
                 f"parsed securities {action.lower()} total {got} does not match "
-                f"statement's {label!r} {want} (off by {round(got - want, 2)})"
+                f"statement's {label!r} {want} (off by {round(got - want, 2)})",
+                got,
+                want,
+                "activity",
             )
 
 
@@ -948,9 +979,12 @@ def _check_income(income: list[dict], text: str) -> None:
     want = _amount(m.group(1))
     got = round(sum(t["amount"] for t in income), 2)
     if want is not None and abs(got - want) > _EPS:
-        raise ValueError(
+        raise diagnostic_helpers.reconciliation_error(
             f"parsed dividends/interest total {got} does not match statement's "
-            f"'Total Dividends, Interest & Other Income' {want} (off by {round(got - want, 2)})"
+            f"'Total Dividends, Interest & Other Income' {want} (off by {round(got - want, 2)})",
+            got,
+            want,
+            "activity",
         )
 
 
@@ -1019,9 +1053,12 @@ def _check_transfers(transfers: list[dict], text: str) -> None:
         want = _amount(m.group(1))
         got = round(sum(t["amount"] for t in transfers if t["action"] == action), 2)
         if want is not None and abs(got - want) > _EPS:
-            raise ValueError(
+            raise diagnostic_helpers.reconciliation_error(
                 f"parsed {action.lower()} total {got} does not match statement's "
-                f"{label!r} {want} (off by {round(got - want, 2)})"
+                f"{label!r} {want} (off by {round(got - want, 2)})",
+                got,
+                want,
+                "activity",
             )
 
 
@@ -1048,9 +1085,12 @@ def _check_core_fund_activity(core: list[dict], text: str) -> None:
     want = _amount(m.group(1))
     got = round(sum(t["amount"] for t in core), 2)
     if want is not None and abs(got - want) > _EPS:
-        raise ValueError(
+        raise diagnostic_helpers.reconciliation_error(
             f"parsed core fund activity total {got} does not match statement's "
-            f"'Total Core Fund Activity' {want} (off by {round(got - want, 2)})"
+            f"'Total Core Fund Activity' {want} (off by {round(got - want, 2)})",
+            got,
+            want,
+            "activity",
         )
 
 
@@ -1809,6 +1849,10 @@ def _account_groups(pages_text: list[str]) -> list[tuple[str, str | None, list[s
     return groups
 
 
+@diagnostic_helpers.repair_grade(
+    section_markers=tuple(DIAGNOSTIC_MARKERS.values()),
+    known_labels=tuple(DIAGNOSTIC_FIELDS.values()),
+)
 def parse(pages_text: list[str], pdf_path: str) -> dict:
     groups = _account_groups(pages_text)
     if not groups:

@@ -48,8 +48,27 @@ from datetime import date, datetime
 import parser_common
 
 from . import common
+from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
+SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+PARSER_REVISION = 1
+DIAGNOSTIC_MARKERS = {
+    "holdings": "Balances and holdings for Vanguard Brokerage Account",
+    "activity": "Account activity for Vanguard Brokerage Account",
+    "completed_transactions": "Completed transactions",
+    "settlement_fund": "Settlement fund",
+    "sweep_program": "Sweep program",
+}
+DIAGNOSTIC_FIELDS = {
+    "totalAccountValue": "Total account value as of",
+    "holdingsTotal": "Total Est. annual income",
+    "sweepTotal": "Total Sweep Balance",
+    "completedTransactions": "Completed transactions",
+}
+DIAGNOSTIC_SIGNALS = diagnostic_helpers.DIAGNOSTIC_SIGNALS
+DIAGNOSTIC_COUNTS = diagnostic_helpers.DIAGNOSTIC_COUNTS
+DIAGNOSTIC_TERMS = diagnostic_helpers.DIAGNOSTIC_TERMS
 
 _INSTITUTION = "Vanguard"
 _CURRENCY = "USD"
@@ -332,6 +351,10 @@ def _parse_txn(block_lines: list[str], anchor: date | None) -> dict | None:
     return row
 
 
+@diagnostic_helpers.repair_grade(
+    section_markers=tuple(DIAGNOSTIC_MARKERS.values()),
+    known_labels=tuple(DIAGNOSTIC_FIELDS.values()),
+)
 def parse(pages_text: list[str], pdf_path: str) -> dict:
     text = "\n".join(pages_text)
     statement_date, anchor = _statement_date(pages_text)

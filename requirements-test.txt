@@ -2,3 +2,5 @@
 pytest
 # gen-bofa-stmt-checks-sample.py draws a placeholder check image.
 pillow
+# Synthetic investment-statement generators render deterministic PDFs.
+reportlab

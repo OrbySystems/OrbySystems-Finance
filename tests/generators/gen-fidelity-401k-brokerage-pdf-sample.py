@@ -8,6 +8,7 @@ using invented names, dates, account numbers, and amounts.
 
 from __future__ import annotations
 
+import argparse
 import os
 
 PAGE_W, PAGE_H = 612, 792
@@ -15,6 +16,8 @@ FONT_SIZE = 8
 LINE_H = 12
 X = 36
 OUT_NAME = "fidelity-401k-brokerage-pdf-synthetic-sample.pdf"
+ZERO_OMITTED_OUT_NAME = "fidelity-401k-zero-omitted-synthetic-sample.pdf"
+GENERIC_EXCHANGE_OUT_NAME = "fidelity-401k-generic-exchange-synthetic-sample.pdf"
 
 
 LINES = [
@@ -61,6 +64,100 @@ LINES = [
     "",
     "Detailed Transaction History",
     "This synthetic statement intentionally prints only statement-period activity summaries.",
+]
+
+
+# NetBenefits suppresses activity rows when their value is zero. This variant
+# mirrors that documented shape with Exchange In and Exchange Out absent while
+# retaining fictional names, dates, and amounts throughout.
+ZERO_OMITTED_LINES = [
+    "Fidelity NetBenefits",
+    "Retirement Savings Statement",
+    "Statement Period: 01/01/2026 to 09/17/2026",
+    "",
+    "Your Account Summary",
+    "Beginning Balance $10,000.00",
+    "Revenue Credit $60.84",
+    "Change In Market Value $939.16",
+    "Ending Balance $11,000.00",
+    "Dividends & Interest $100.00",
+    "",
+    "Market Value of Your Account",
+    "Investment as of 12/31/2025 Investment as of 09/17/2026",
+    "Shares/Units Beginning Ending Price as of 12/31/2025 Price as of 09/17/2026 Market Value Beginning Market Value Ending",
+    "INDEX FUNDS (PASSIVELY MANAGED)",
+    "Synthetic Growth Index Fund 60.000 60.000 $100.00 $110.00 $6,000.00 $6,600.00",
+    "Bond",
+    "Blue Horizon Bond Pool 40.000 40.000 $100.00 $110.00 $4,000.00 $4,400.00",
+    "Account Totals $10,000.00 $11,000.00",
+    "",
+    "Your Contribution Summary",
+    "Pre-Tax Contributions $0.00 100% $7,000.00 $7,000.00",
+    "",
+    "Your Account Activity",
+    "Statement Period: 01/01/2026 to 09/17/2026",
+    "Use this section as a summary of transactions that occurred in your account during the statement period.",
+    [(248, "Synthetic"), (332, "Blue"), (420, "Total")],
+    [(144, "Activity")],
+    [(248, "Growth"), (332, "Horizon")],
+    [(248, "Index"), (332, "Bond")],
+    [(144, "Beginning Balance"), (248, "$6,000.00"), (332, "$4,000.00"), (420, "$10,000.00")],
+    [(146, "Revenue Credit"), (248, "$40.00"), (332, "$20.84"), (420, "$60.84")],
+    [(146, "Change In Market Value"), (248, "$560.00"), (332, "$379.16"), (420, "$939.16")],
+    [(144, "Ending Balance"), (248, "$6,600.00"), (332, "$4,400.00"), (420, "$11,000.00")],
+    [(146, "Dividends & Interest"), (248, "$60.00"), (332, "$40.00"), (420, "$100.00")],
+    "Revenue Credit represents your share of a pricing credit from Fidelity Investments.",
+    "",
+    "Your Account Information",
+    "This synthetic fixture intentionally omits zero-valued exchange rows.",
+]
+
+
+# Some NetBenefits plans combine fund-to-fund movements into one signed
+# "Exchanges" row whose account-level total is zero. In this layout dividends
+# are also a separate reconciliation component rather than being included in
+# Change In Market Value.
+GENERIC_EXCHANGE_LINES = [
+    "Fidelity NetBenefits",
+    "Retirement Savings Statement",
+    "Statement Period: 07/01/2026 to 09/30/2026",
+    "Account Number: SYN-0000-9753",
+    "",
+    "Your Account Summary",
+    "Beginning Balance $10,000.00",
+    "Exchanges $0.00",
+    "Change In Market Value $200.00",
+    "Ending Balance $10,250.00",
+    "Dividend & Interest $50.00",
+    "",
+    "Market Value of Your Account",
+    "Investment as of 06/30/2026 Investment as of 09/30/2026",
+    "Shares/Units Beginning Ending Price as of 06/30/2026 Price as of 09/30/2026 Market Value Beginning Market Value Ending",
+    "INDEX FUNDS (PASSIVELY MANAGED)",
+    "Synthetic Growth Index Fund 40.000 36.000 $100.00 $100.00 $4,000.00 $3,600.00",
+    "Bond",
+    "Blue Horizon Bond Pool 35.000 37.850 $100.00 $100.00 $3,500.00 $3,785.00",
+    "Income",
+    "Stable Value Income Fd 25.000 28.650 $100.00 $100.00 $2,500.00 $2,865.00",
+    "Account Totals $10,000.00 $10,250.00",
+    "",
+    "Your Contribution Summary",
+    "Pre-Tax Contributions $0.00 100% $10,250.00 $10,250.00",
+    "",
+    "Your Account Activity",
+    "Statement Period: 07/01/2026 to 09/30/2026",
+    "Use this section as a summary of transactions that occurred in your account during the statement period.",
+    [(220, "Synthetic"), (300, "Blue"), (380, "Stable"), (470, "Total")],
+    [(120, "Activity")],
+    [(220, "Growth"), (300, "Horizon"), (380, "Value")],
+    [(220, "Index"), (300, "Bond")],
+    [(120, "Beginning Balance"), (220, "$4,000.00"), (300, "$3,500.00"), (380, "$2,500.00"), (470, "$10,000.00")],
+    [(120, "Exchanges"), (220, "-$500.00"), (300, "$200.00"), (380, "$300.00"), (470, "$0.00")],
+    [(120, "Change In Market Value"), (220, "$80.00"), (300, "$70.00"), (380, "$50.00"), (470, "$200.00")],
+    [(120, "Ending Balance"), (220, "$3,600.00"), (300, "$3,785.00"), (380, "$2,865.00"), (470, "$10,250.00")],
+    [(120, "Dividend & Interest"), (220, "$20.00"), (300, "$15.00"), (380, "$15.00"), (470, "$50.00")],
+    "Your Account Information",
+    "This synthetic fixture uses a signed, zero-net Exchanges row.",
 ]
 
 
@@ -119,10 +216,24 @@ def build_pdf(lines: list, path: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--variant",
+        choices=("all", "baseline", "zero-omitted", "generic-exchange"),
+        default="all",
+    )
+    args = parser.parse_args()
     out_dir = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(out_dir, OUT_NAME)
-    build_pdf(LINES, path)
-    print(f"wrote {path}")
+    variants = {
+        "baseline": (OUT_NAME, LINES),
+        "zero-omitted": (ZERO_OMITTED_OUT_NAME, ZERO_OMITTED_LINES),
+        "generic-exchange": (GENERIC_EXCHANGE_OUT_NAME, GENERIC_EXCHANGE_LINES),
+    }
+    selected = variants.values() if args.variant == "all" else (variants[args.variant],)
+    for name, lines in selected:
+        path = os.path.join(out_dir, name)
+        build_pdf(lines, path)
+        print(f"wrote {path}")
 
 
 if __name__ == "__main__":

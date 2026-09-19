@@ -26,9 +26,12 @@ has a blank Amount and is emitted with amount 0.0.
 
 import re
 
+import parser_common
 from institutions import common
 
 KIND = "brokerage"
+SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+INSTITUTION = "Vanguard"
 
 # The full header of the Custom Activity Report. Detection requires the
 # distinctive combination (Settlement date + Trade date + the

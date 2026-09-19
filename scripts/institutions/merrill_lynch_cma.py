@@ -23,6 +23,7 @@ import parser_common
 from . import common
 
 KIND = parser_common.KIND_BROKERAGE
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PARTIAL
 
 _INSTITUTION = "Merrill Lynch"
 _ACCOUNT_TYPE = "Brokerage"

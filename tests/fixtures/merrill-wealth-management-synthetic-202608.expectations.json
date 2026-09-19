@@ -1,0 +1,30 @@
+{
+  "profile": "merrill_wealth",
+  "file": "merrill-wealth-management-synthetic-202608.pdf",
+  "institution": "Merrill",
+  "statementDate": "2026-08-28",
+  "account": "1566",
+  "accountType": "Brokerage",
+  "providerAccountId": "ML-5772-1566",
+  "endingValue": 108000.0,
+  "positions": {
+    "CASH": 8000.0,
+    "ALPH": 20000.0,
+    "BETA": 5000.0,
+    "FUNDX": 50000.0,
+    "123456AB7": 25000.0
+  },
+  "transactionCount": 10,
+  "transactionTotals": {
+    "deposit": 10000.0,
+    "transfer_in": 2000.0,
+    "dividend": 200.0,
+    "interest": 50.0,
+    "buy": -5200.0,
+    "sell": 6000.0,
+    "withdrawal": -5000.0,
+    "transfer_out": -2000.0,
+    "fee": -50.0
+  },
+  "realizedGain": 1500.0
+}
