@@ -118,6 +118,449 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 KIND_BANK = "bank"
 KIND_BROKERAGE = "brokerage"
 
+# Runtime support metadata. Parsers that have only been exercised against
+# public documentation and synthetic fixtures opt into PROVISIONAL. Existing
+# parsers default to SUPPORTED so third-party drop-ins written before this
+# metadata existed keep working unchanged.
+SUPPORT_TIER_SUPPORTED = "supported"
+SUPPORT_TIER_BROAD = "broad"
+SUPPORT_TIER_PARTIAL = "partial"
+SUPPORT_TIER_PROVISIONAL = "provisional"
+_SUPPORT_TIERS = {
+    SUPPORT_TIER_SUPPORTED,
+    SUPPORT_TIER_BROAD,
+    SUPPORT_TIER_PARTIAL,
+    SUPPORT_TIER_PROVISIONAL,
+}
+
+_DIAGNOSTIC_CODES = {
+    "PARSER_ACTIVITY_ROWS_NOT_FOUND",
+    "PARSER_FAILED",
+    "PARSER_OUTPUT_INVALID",
+    "PARSER_RECONCILIATION_FAILED",
+    "PARSER_REQUIRED_DATA_MISSING",
+    "PARSER_STATEMENT_DATE_INVALID",
+    "PARSER_UNCLASSIFIED_ROW",
+}
+_DIAGNOSTIC_STAGES = {
+    "activity",
+    "holdings",
+    "metadata",
+    "output_validation",
+    "parsing",
+    "realized_gains",
+    "summary",
+    "validation",
+}
+_DIAGNOSTIC_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,63}$")
+_RECONCILIATION_DIRECTIONS = {
+    "printedEndingAboveParsedEquation",
+    "printedEndingBelowParsedEquation",
+}
+
+
+class ParserDiagnosticError(ValueError):
+    """A parser failure with privacy-safe, machine-readable context.
+
+    ``message`` remains internal and may contain exact values for local logs.
+    Only the fixed code/stage, module-allowlisted identifiers/booleans/counts,
+    and a fixed reconciliation-direction enum can cross the dispatcher
+    boundary. Parsers should use this for failures where a report needs more
+    precision than can safely be inferred from exception text.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str,
+        stage: str,
+        missing_fields: tuple[str, ...] | list[str] = (),
+        signals: dict[str, bool] | None = None,
+        counts: dict[str, int] | None = None,
+        unclassified_terms: tuple[str, ...] | list[str] = (),
+        reconciliation_direction: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = code if code in _DIAGNOSTIC_CODES else "PARSER_FAILED"
+        self.diagnostic_stage = stage if stage in _DIAGNOSTIC_STAGES else "parsing"
+        self.missing_fields = tuple(missing_fields)
+        self.diagnostic_signals = dict(signals or {})
+        self.diagnostic_counts = dict(counts or {})
+        self.unclassified_terms = tuple(unclassified_terms)
+        self.reconciliation_direction = reconciliation_direction
+
+
+def enrich_parser_error(
+    error: Exception,
+    *,
+    signals: dict[str, bool] | None = None,
+    counts: dict[str, int] | None = None,
+    unclassified_terms: tuple[str, ...] | list[str] = (),
+) -> ParserDiagnosticError:
+    """Attach privacy-safe structural context to an existing parse failure.
+
+    This is the reusable bridge for older strict parsers: they can retain
+    their detailed internal ``ValueError`` messages while publishing only the
+    stable code/stage and parser-declared booleans, counts, and vocabulary.
+    Existing ``ParserDiagnosticError`` metadata wins when keys overlap.
+    """
+    supplied_signals = dict(signals or {})
+    supplied_counts = dict(counts or {})
+    supplied_terms = list(unclassified_terms)
+    if isinstance(error, ParserDiagnosticError):
+        supplied_signals.update(error.diagnostic_signals)
+        supplied_counts.update(error.diagnostic_counts)
+        supplied_terms.extend(error.unclassified_terms)
+        return ParserDiagnosticError(
+            str(error),
+            code=error.diagnostic_code,
+            stage=error.diagnostic_stage,
+            missing_fields=error.missing_fields,
+            signals=supplied_signals,
+            counts=supplied_counts,
+            unclassified_terms=tuple(dict.fromkeys(supplied_terms)),
+            reconciliation_direction=error.reconciliation_direction,
+        )
+
+    code, stage = _classify_parser_error(error)
+    return ParserDiagnosticError(
+        str(error),
+        code=code,
+        stage=stage,
+        signals=supplied_signals,
+        counts=supplied_counts,
+        unclassified_terms=tuple(dict.fromkeys(supplied_terms)),
+    )
+
+
+def module_support_tier(module) -> str:
+    """Return a parser's declared support tier, safely defaulting old or
+    malformed parser modules to ``supported``.
+    """
+    tier = getattr(module, "SUPPORT_TIER", SUPPORT_TIER_SUPPORTED)
+    return tier if tier in _SUPPORT_TIERS else SUPPORT_TIER_SUPPORTED
+
+
+def _safe_label(value, fallback: str, limit: int = 80) -> str:
+    """Keep only publisher-controlled label characters in diagnostics.
+
+    A parser module is executable code and may be user-supplied. Diagnostic
+    metadata must never become a route for arbitrary statement text, paths,
+    or control characters to reach a report.
+    """
+    if not isinstance(value, str):
+        return fallback
+    cleaned = re.sub(r"[^A-Za-z0-9 .&'()_+/-]", "", value).strip()
+    return cleaned[:limit] or fallback
+
+
+def _classify_parser_error(error: Exception) -> tuple[str, str]:
+    """Map internal exception text to a stable, content-free code/stage.
+
+    Parser exceptions historically include exact rejected rows and monetary
+    values. Only this classification crosses the process/API boundary; the
+    exception text itself intentionally does not.
+    """
+    if isinstance(error, ParserDiagnosticError):
+        return error.diagnostic_code, error.diagnostic_stage
+
+    message = str(error).lower()
+    # Contract failures often mention row types, dates, or missing fields, so
+    # recognize the validator's own shape before the content-oriented rules.
+    if ".parse():" in message or (".parse()" in message and "key" in message) or "tables[" in message:
+        return "PARSER_OUTPUT_INVALID", "output_validation"
+    if "period" in message or "statement date" in message or "activity date" in message:
+        return "PARSER_STATEMENT_DATE_INVALID", "metadata"
+    if "unclassified" in message or "unrecognized" in message:
+        return "PARSER_UNCLASSIFIED_ROW", "activity"
+    if "no " in message and ("row" in message or "transaction" in message or "activity" in message):
+        return "PARSER_ACTIVITY_ROWS_NOT_FOUND", "activity"
+    if "reconcile" in message or "did not match" in message:
+        if "holding" in message or "position" in message:
+            return "PARSER_RECONCILIATION_FAILED", "holdings"
+        if "realized" in message or "gain" in message:
+            return "PARSER_RECONCILIATION_FAILED", "realized_gains"
+        return "PARSER_RECONCILIATION_FAILED", "validation"
+    if "holding" in message or "position" in message:
+        return "PARSER_REQUIRED_DATA_MISSING", "holdings"
+    if "activity" in message or "transaction" in message:
+        return "PARSER_REQUIRED_DATA_MISSING", "activity"
+    if "summary" in message or "control total" in message:
+        return "PARSER_REQUIRED_DATA_MISSING", "summary"
+    if "date" in message:
+        return "PARSER_STATEMENT_DATE_INVALID", "metadata"
+    return "PARSER_FAILED", "parsing"
+
+
+def _diagnostic_sections(module, text: str | None) -> dict[str, bool]:
+    """Return presence flags for a parser's public, static section markers.
+
+    Only sanitized marker *names* and booleans are returned. Marker text and
+    document text are never placed in the diagnostic.
+    """
+    # Extra parsers are renamed to a bare filename by load_extra_parsers.
+    # Their metadata is user-authored rather than reviewed repository data, so
+    # do not make any part of it reportable.
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return {}
+    markers = getattr(module, "DIAGNOSTIC_MARKERS", None)
+    if not text or not isinstance(markers, dict):
+        return {}
+    lines = [line.strip().lower() for line in text.splitlines() if line.strip()]
+    found: dict[str, bool] = {}
+    for raw_name, raw_marker in list(markers.items())[:16]:
+        name = _safe_label(raw_name, "", 40).lower().replace(" ", "_")
+        if not name or not isinstance(raw_marker, str) or not raw_marker:
+            continue
+        marker = raw_marker.strip().lower()
+        found[name] = any(marker in line for line in lines)
+    return found
+
+
+def _diagnostic_missing_fields(module, error: Exception) -> list[str]:
+    """Return only trusted, module-allowlisted field identifiers.
+
+    A raw missing label can include statement content, so exception strings
+    are never parsed for this data. Bundled parsers must raise
+    ``ParserDiagnosticError`` and publish the complete set of allowed stable
+    identifiers in ``DIAGNOSTIC_FIELDS``. External parsers cannot add fields
+    to a report.
+    """
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return []
+    if not isinstance(error, ParserDiagnosticError):
+        return []
+    declared = getattr(module, "DIAGNOSTIC_FIELDS", ())
+    if not isinstance(declared, (dict, tuple, list, set, frozenset)):
+        return []
+    declared_fields = declared.keys() if isinstance(declared, dict) else declared
+    allowed = {
+        field for field in declared_fields
+        if isinstance(field, str) and _DIAGNOSTIC_FIELD_RE.fullmatch(field)
+    }
+    missing = []
+    for field in error.missing_fields:
+        if field in allowed and field not in missing:
+            missing.append(field)
+        if len(missing) >= 16:
+            break
+    return missing
+
+
+def _diagnostic_field_presence(module, text: str | None) -> dict[str, bool]:
+    """Return presence flags for trusted, static field-label markers."""
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return {}
+    fields = getattr(module, "DIAGNOSTIC_FIELDS", None)
+    if not text or not isinstance(fields, dict):
+        return {}
+    lines = [line.strip().lower() for line in text.splitlines() if line.strip()]
+    found: dict[str, bool] = {}
+    for raw_name, raw_marker in list(fields.items())[:24]:
+        if (
+            not isinstance(raw_name, str)
+            or not _DIAGNOSTIC_FIELD_RE.fullmatch(raw_name)
+            or not isinstance(raw_marker, str)
+            or not raw_marker
+        ):
+            continue
+        marker = raw_marker.strip().lower()
+        found[raw_name] = any(marker in line for line in lines)
+    return found
+
+
+def _diagnostic_error_signals(module, error: Exception) -> dict[str, bool]:
+    """Filter parser-supplied booleans through a bundled-module allowlist."""
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return {}
+    if not isinstance(error, ParserDiagnosticError):
+        return {}
+    declared = getattr(module, "DIAGNOSTIC_SIGNALS", ())
+    if not isinstance(declared, (tuple, list, set, frozenset)):
+        return {}
+    allowed = {
+        key for key in declared
+        if isinstance(key, str) and _DIAGNOSTIC_FIELD_RE.fullmatch(key)
+    }
+    signals: dict[str, bool] = {}
+    for key, value in list(error.diagnostic_signals.items())[:48]:
+        if key in allowed and isinstance(value, bool):
+            signals[key] = value
+    return signals
+
+
+def _diagnostic_error_counts(module, error: Exception) -> dict[str, int]:
+    """Filter non-sensitive structural counts through a module allowlist."""
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return {}
+    if not isinstance(error, ParserDiagnosticError):
+        return {}
+    declared = getattr(module, "DIAGNOSTIC_COUNTS", ())
+    if not isinstance(declared, (tuple, list, set, frozenset)):
+        return {}
+    allowed = {
+        key for key in declared
+        if isinstance(key, str) and _DIAGNOSTIC_FIELD_RE.fullmatch(key)
+    }
+    counts: dict[str, int] = {}
+    for key, value in list(error.diagnostic_counts.items())[:16]:
+        if (
+            key in allowed
+            and isinstance(value, int)
+            and not isinstance(value, bool)
+            and 0 <= value <= 1_000_000
+        ):
+            counts[key] = value
+    return counts
+
+
+def _diagnostic_unclassified_terms(module, error: Exception) -> list[str]:
+    """Return only fixed financial vocabulary terms from unknown labels.
+
+    The raw label is never included. The module's allowlist deliberately omits
+    arbitrary words, so a person's, employer's, plan's, or security's name
+    cannot become reportable through this field.
+    """
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return []
+    if not isinstance(error, ParserDiagnosticError):
+        return []
+    declared = getattr(module, "DIAGNOSTIC_TERMS", ())
+    if not isinstance(declared, (tuple, list, set, frozenset)):
+        return []
+    allowed = {
+        term for term in declared
+        if isinstance(term, str) and re.fullmatch(r"[a-z][a-z0-9]{0,31}", term)
+    }
+    terms = []
+    for term in error.unclassified_terms:
+        if term in allowed and term not in terms:
+            terms.append(term)
+        if len(terms) >= 32:
+            break
+    return terms
+
+
+def _diagnostic_reconciliation_direction(module, error: Exception) -> str:
+    """Return a fixed enum describing the sign of a reconciliation gap."""
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return ""
+    if not isinstance(error, ParserDiagnosticError):
+        return ""
+    direction = error.reconciliation_direction
+    return direction if direction in _RECONCILIATION_DIRECTIONS else ""
+
+
+def _parser_revision(module) -> int | None:
+    """Return a small bundled-parser revision useful when Orby is a dev build."""
+    if not module.__name__.startswith(("institutions.", "csv_institutions.")):
+        return None
+    revision = getattr(module, "PARSER_REVISION", None)
+    if isinstance(revision, int) and not isinstance(revision, bool) and 1 <= revision <= 1_000_000:
+        return revision
+    return None
+
+
+def parser_failure(module, error: Exception, input_format: str, input_stats: dict,
+                   text: str | None = None) -> tuple[str, dict]:
+    """Build the user-facing message and privacy-safe diagnostic for a
+    parser that matched a document but failed while parsing it.
+
+    The returned dict is safe to preview/copy/report: it contains no raw
+    exception, document text, file name/path, dates, account identifiers,
+    securities, or monetary values.
+    """
+    qualified_name = module.__name__
+    bundled = qualified_name.startswith(("institutions.", "csv_institutions."))
+    parser_id = (
+        _safe_label(qualified_name.rsplit(".", 1)[-1], "unknown_parser", 80)
+        if bundled else "external_parser"
+    )
+    institution = (
+        _safe_label(
+            getattr(module, "INSTITUTION", getattr(module, "_INSTITUTION", "")),
+            "Recognized institution",
+            80,
+        )
+        if bundled else "External parser"
+    )
+    tier = module_support_tier(module)
+    code, stage = _classify_parser_error(error)
+    reference = f"{parser_id.replace('_', '-').upper()}-{code.removeprefix('PARSER_')}"
+    if tier == SUPPORT_TIER_PROVISIONAL:
+        message = (
+            f"Orby recognized this as a provisional {institution} format, but this "
+            f"statement layout is not covered yet. No data was imported. "
+            f"Error reference: {reference}."
+        )
+    else:
+        message = (
+            f"Orby recognized this as {institution}, but could not parse the "
+            f"{stage.replace('_', ' ')} section. No data was imported. "
+            f"Error reference: {reference}."
+        )
+    diagnostic = {
+        "schemaVersion": 3,
+        "reference": reference,
+        "code": code,
+        "parserId": parser_id,
+        "institution": institution,
+        "supportTier": tier,
+        "inputFormat": _safe_label(input_format, "unknown", 16).lower(),
+        "stage": stage,
+    }
+    for key in ("pageCount", "textPageCount", "rowCount", "columnCount"):
+        value = input_stats.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            diagnostic[key] = value
+    sections = _diagnostic_sections(module, text)
+    if sections:
+        diagnostic["sections"] = sections
+    field_presence = _diagnostic_field_presence(module, text)
+    if field_presence:
+        diagnostic["fieldPresence"] = field_presence
+    missing_fields = _diagnostic_missing_fields(module, error)
+    if missing_fields:
+        diagnostic["missingFields"] = missing_fields
+    signals = _diagnostic_error_signals(module, error)
+    if signals:
+        diagnostic["signals"] = signals
+    counts = _diagnostic_error_counts(module, error)
+    if counts:
+        diagnostic["counts"] = counts
+    unclassified_terms = _diagnostic_unclassified_terms(module, error)
+    if unclassified_terms:
+        diagnostic["unclassifiedLabelTerms"] = unclassified_terms
+    reconciliation_direction = _diagnostic_reconciliation_direction(module, error)
+    if reconciliation_direction:
+        diagnostic["reconciliationDirection"] = reconciliation_direction
+    parser_revision = _parser_revision(module)
+    if parser_revision is not None:
+        diagnostic["parserRevision"] = parser_revision
+    return message, diagnostic
+
+
+def unsupported_format_diagnostic(input_format: str, input_stats: dict) -> dict:
+    """Privacy-safe diagnostic for a forced statement import where no
+    parser matched. Per-parser miss reasons are intentionally excluded.
+    """
+    diagnostic = {
+        "schemaVersion": 3,
+        "reference": "PARSER-NOT-FOUND",
+        "code": "PARSER_NOT_FOUND",
+        "parserId": "",
+        "institution": "",
+        "supportTier": "unsupported",
+        "inputFormat": _safe_label(input_format, "unknown", 16).lower(),
+        "stage": "detection",
+    }
+    for key in ("pageCount", "textPageCount", "rowCount", "columnCount"):
+        value = input_stats.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            diagnostic[key] = value
+    return diagnostic
+
 
 def module_kind(module) -> str:
     """Returns module's KIND attribute (KIND_BANK or KIND_BROKERAGE), or

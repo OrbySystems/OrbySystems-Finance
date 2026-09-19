@@ -294,14 +294,31 @@ def main() -> None:
     if module is None:
         if extra_misses:
             reason = "; ".join([reason] + extra_misses) if reason else "; ".join(extra_misses)
-        print(json.dumps({"detected": False, "reason": reason}))
+        print(json.dumps({
+            "detected": False,
+            "reason": reason,
+            "diagnostic": parser_common.unsupported_format_diagnostic(
+                "xlsx" if csv_path.lower().endswith(".xlsx") else "csv",
+                {"columnCount": len(header)},
+            ),
+        }))
         return
 
+    rows = None
     try:
         rows = _read_rows(csv_path, header)
         result = _parse_matched(module, rows, csv_path)
     except Exception as e:  # noqa: BLE001
-        print(json.dumps({"error": f"failed to parse the export: {e}"}))
+        input_stats = {"columnCount": len(header)}
+        if rows is not None:
+            input_stats["rowCount"] = len(rows)
+        message, diagnostic = parser_common.parser_failure(
+            module,
+            e,
+            "xlsx" if csv_path.lower().endswith(".xlsx") else "csv",
+            input_stats,
+        )
+        print(json.dumps({"error": message, "diagnostic": diagnostic}))
         sys.exit(1)
 
     result["detected"] = True
