@@ -8,7 +8,11 @@ from institutions import fidelity_401k_brokerage_pdf as netbenefits
 
 
 def test_fidelity_401k_brokerage_pdf_synthetic(run_statement):
-    stmt = run_statement("fidelity-401k-brokerage-pdf-synthetic-sample.pdf")
+    stmt = run_statement(
+        "fidelity-401k-brokerage-pdf-synthetic-sample.pdf",
+        "--expected-parser",
+        "fidelity_401k_brokerage_pdf.py",
+    )
 
     assert stmt.institution == "Fidelity NetBenefits"
     assert stmt.statement_date == "2026-06-30"
@@ -50,7 +54,11 @@ def test_fidelity_401k_brokerage_pdf_synthetic(run_statement):
 
 
 def test_fidelity_401k_omitted_zero_activity_rows(run_statement):
-    stmt = run_statement("fidelity-401k-zero-omitted-synthetic-sample.pdf")
+    stmt = run_statement(
+        "fidelity-401k-zero-omitted-synthetic-sample.pdf",
+        "--expected-parser",
+        "fidelity_401k_brokerage_pdf.py",
+    )
 
     assert stmt.institution == "Fidelity NetBenefits"
     assert stmt.statement_date == "2026-09-17"
@@ -64,7 +72,11 @@ def test_fidelity_401k_omitted_zero_activity_rows(run_statement):
 
 
 def test_fidelity_401k_generic_exchange_and_separate_dividends(run_statement):
-    stmt = run_statement("fidelity-401k-generic-exchange-synthetic-sample.pdf")
+    stmt = run_statement(
+        "fidelity-401k-generic-exchange-synthetic-sample.pdf",
+        "--expected-parser",
+        "fidelity_401k_brokerage_pdf.py",
+    )
 
     assert stmt.institution == "Fidelity NetBenefits"
     assert stmt.statement_date == "2026-09-30"

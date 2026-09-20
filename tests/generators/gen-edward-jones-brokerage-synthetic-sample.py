@@ -31,7 +31,7 @@ ACCOUNT_ID = "123-45678-9-0"
 
 class Statement:
     def __init__(self, path: Path):
-        self.c = canvas.Canvas(str(path), pagesize=letter)
+        self.c = canvas.Canvas(str(path), pagesize=letter, invariant=1)
         self.page = 0
         self.y = 0.0
 

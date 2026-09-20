@@ -21,7 +21,7 @@ def _expectations() -> dict:
 
 def test_synthetic_statement_end_to_end(run_statement) -> None:
     want = _expectations()
-    stmt = run_statement(want["file"])
+    stmt = run_statement(want["file"], "--expected-parser", "edward_jones_brokerage.py")
     assert stmt.institution == want["institution"]
     assert stmt.statement_date == want["statementDate"]
 

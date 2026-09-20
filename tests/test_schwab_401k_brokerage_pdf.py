@@ -18,7 +18,11 @@ EXPECTATIONS = FIXTURES / "schwab-401k-synthetic-202606.expectations.json"
 
 def test_schwab_401k_synthetic_statement(run_statement):
     expected = json.loads(EXPECTATIONS.read_text(encoding="utf-8"))
-    stmt = run_statement("schwab-401k-synthetic-202606.pdf")
+    stmt = run_statement(
+        "schwab-401k-synthetic-202606.pdf",
+        "--expected-parser",
+        "schwab_401k_brokerage_pdf.py",
+    )
 
     assert stmt.institution == expected["institution"]
     assert stmt.statement_date == expected["statementDate"]
@@ -41,6 +45,9 @@ def test_schwab_401k_synthetic_statement(run_statement):
     assert "price" not in stable
     assert stable["is_cash_equivalent"] is True
     assert approx(stable["current_value"], 55000.0)
+    # Real Schwab RPS statements can print the percentage only on the
+    # category heading, leaving a cash-equivalent holding's own cell blank.
+    assert approx(stable["percent_of_account"], 50.0)
     assert approx(sum(row["current_value"] for row in stmt.brokerage_holdings), expected["endingValue"])
 
     employee, employer, fee = stmt.brokerage_transactions
@@ -51,6 +58,39 @@ def test_schwab_401k_synthetic_statement(run_statement):
     assert approx(employer["amount"], 1500.0)
     assert fee["transaction_type"] == "fee"
     assert approx(fee["amount"], -5.0)
+
+
+def test_compact_text_layer_summary_and_period() -> None:
+    """Cover the spacing and wrap order observed in a real RPS text layer."""
+    pages = [
+        "\n".join(
+            [
+                "Periodcovered:APRIL1,2026TOJUNE30,2026",
+                "Changein PlanAccountValue",
+                "BeginningValue$100,000.00$95,000.00",
+                "YourContributions3,000.006,000.00",
+                "EmployerContributions1,500.003,000.00",
+                "IndividualTransactionFees*0.000.00",
+                # The monetary columns precede the wrapped Fees* suffix in
+                # extraction order on the real statement.
+                "PlanAdministrationandOther(5.00)(10.00)",
+                "Fees*",
+                "Gain/Loss/NetIncome5,505.006,010.00",
+                "EndingValue$110,000.00$110,000.00",
+            ]
+        )
+    ]
+
+    assert schwab_401k._statement_date(pages[0]) == "2026-06-30"
+    assert schwab_401k._summary(pages) == {
+        "beginning": 100000.0,
+        "employee": 3000.0,
+        "employer": 1500.0,
+        "transaction_fees": 0.0,
+        "plan_fees": -5.0,
+        "gain_loss": 5505.0,
+        "ending": 110000.0,
+    }
 
 
 def test_schwab_401k_detector_does_not_claim_retail_statement():

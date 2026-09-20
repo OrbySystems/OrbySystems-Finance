@@ -40,7 +40,11 @@ PROFILE_MODULES = {
 @pytest.mark.parametrize(("profile_key", "expectations_path"), CASES)
 def test_synthetic_statement_end_to_end(profile_key, expectations_path, run_statement) -> None:
     want = json.loads(expectations_path.read_text(encoding="utf-8"))
-    stmt = run_statement(want["file"])
+    stmt = run_statement(
+        want["file"],
+        "--expected-parser",
+        f"{PROFILE_MODULES[profile_key]}.py",
+    )
     assert stmt.institution == want["institution"]
     assert stmt.statement_date == want["statementDate"]
 
@@ -121,7 +125,7 @@ def test_provisional_failure_has_repair_grade_diagnostics(
     assert diagnostic["signals"]["beginningBalance"] is True
     assert diagnostic["counts"]["summaryComponents"] == 6
     assert diagnostic["counts"]["sectionMarkersPresent"] >= 5
-    assert diagnostic["parserRevision"] == 1
+    assert diagnostic["parserRevision"] == module.PARSER_REVISION
     encoded = json.dumps(diagnostic)
     assert profile["account_id"] not in encoded
     assert "$" not in encoded
