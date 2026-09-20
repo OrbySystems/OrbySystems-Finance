@@ -37,7 +37,7 @@ should be considered production-hardened.
 | Merrill / Merrill Edge | **Partial + provisional** | Existing CMA coverage plus provisional Wealth Management coverage; Trust remains unsupported |
 | J.P. Morgan Wealth Management / Self-Directed Investing | **Provisional** | Investment statement family, distinct from Chase banking and credit-card statements |
 | Morgan Stanley Wealth Management | **Provisional** | Wealth Management client statement, distinct from E*TRADE |
-| E*TRADE from Morgan Stanley | **Provisional** | Self-directed brokerage statement |
+| E*TRADE from Morgan Stanley | **Provisional** | Morgan Stanley at Work client statement validated for cash-only, zero-activity periods; itemized activity layouts still need validation |
 | Wells Fargo Advisors / WellsTrade | **Provisional** | Investment statement family, distinct from Wells Fargo checking statements |
 | Edward Jones | **Provisional** | Retail brokerage statement |
 | Raymond James | **Provisional** | Comprehensive statement; Executive Overview remains unsupported |

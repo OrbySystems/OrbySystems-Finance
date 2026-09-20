@@ -7,7 +7,9 @@ from conftest import approx
 
 
 def test_sample_brokerage_pdf(run_statement):
-    stmt = run_statement("brokerage-synthetic-sample.pdf")
+    stmt = run_statement(
+        "brokerage-synthetic-sample.pdf", "--expected-parser", "sample_brokerage.py"
+    )
     assert stmt.institution == "Sample Brokerage Services"
     assert stmt.statement_date == "2026-06-30"
 
@@ -41,15 +43,31 @@ def _assert_sample_brokerage_export(stmt):
 
 
 def test_sample_brokerage_csv(run_statement):
-    _assert_sample_brokerage_export(run_statement("brokerage-csv-synthetic-sample.csv"))
+    _assert_sample_brokerage_export(
+        run_statement(
+            "brokerage-csv-synthetic-sample.csv",
+            "--expected-parser",
+            "sample_brokerage_csv.py",
+        )
+    )
 
 
 def test_sample_brokerage_xlsx(run_statement):
-    _assert_sample_brokerage_export(run_statement("brokerage-xlsx-synthetic-sample.xlsx"))
+    _assert_sample_brokerage_export(
+        run_statement(
+            "brokerage-xlsx-synthetic-sample.xlsx",
+            "--expected-parser",
+            "sample_brokerage_csv.py",
+        )
+    )
 
 
 def test_vanguard_brokerage_xlsx_synthetic(run_statement):
-    stmt = run_statement("vanguard-brokerage-xlsx-synthetic-sample.xlsx")
+    stmt = run_statement(
+        "vanguard-brokerage-xlsx-synthetic-sample.xlsx",
+        "--expected-parser",
+        "vanguard_brokerage.py",
+    )
     assert stmt.institution == "Vanguard"
     assert len(stmt.transactions) == 0 and len(stmt.brokerage_holdings) == 0
     assert len(stmt.brokerage_transactions) == 8
@@ -69,7 +87,11 @@ def test_vanguard_brokerage_xlsx_synthetic(run_statement):
 
 
 def test_fidelity_brokerage_positions_csv(run_statement):
-    stmt = run_statement("fidelity-brokerage-positions-sample.csv")
+    stmt = run_statement(
+        "fidelity-brokerage-positions-sample.csv",
+        "--expected-parser",
+        "fidelity_brokerage_csv.py",
+    )
     assert stmt.institution == "Fidelity Investments"
     assert len(stmt.transactions) == 0 and len(stmt.brokerage_transactions) == 0
     assert len(stmt.brokerage_holdings) == 20
@@ -98,7 +120,11 @@ def _find(stmt, symbol):
 
 
 def test_vanguard_voyager_synthetic(run_statement):
-    stmt = run_statement("vanguard-voyager-synthetic-sample.pdf")
+    stmt = run_statement(
+        "vanguard-voyager-synthetic-sample.pdf",
+        "--expected-parser",
+        "vanguard_brokerage.py",
+    )
     assert stmt.institution == "Vanguard"
     assert stmt.statement_date == "2024-03-31"
     assert len(stmt.brokerage_holdings) == 3
@@ -126,7 +152,11 @@ def test_vanguard_voyager_synthetic(run_statement):
 
 
 def test_vanguard_personal_investor_synthetic(run_statement):
-    stmt = run_statement("vanguard-personal-investor-synthetic-sample.pdf")
+    stmt = run_statement(
+        "vanguard-personal-investor-synthetic-sample.pdf",
+        "--expected-parser",
+        "vanguard_brokerage.py",
+    )
     assert stmt.institution == "Vanguard" and stmt.statement_date == "2025-04-30"
     assert len(stmt.brokerage_holdings) == 3
 
