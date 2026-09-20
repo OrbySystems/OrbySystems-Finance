@@ -55,7 +55,7 @@ def _holding_row(
 
 def build() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    c = canvas.Canvas(str(OUT), pagesize=landscape(letter))
+    c = canvas.Canvas(str(OUT), pagesize=landscape(letter), invariant=1)
     c.setTitle("Synthetic Retirement Plan Statement")
     c.setAuthor("Orby parser test fixture")
 
@@ -118,7 +118,9 @@ def build() -> None:
     c.setFont("Helvetica-Bold", 9)
     c.drawString(36, 392, "CAPITAL PRESERVATION FUNDS")
     c.drawRightString(284, 392, "50%")
-    _holding_row(c, 372, "Synthetic Stable Value Fund", "50%", "--", "--", "$55,000.00")
+    # Some real RPS layouts print the allocation only on the category row.
+    # Keep the holding's own percentage cell blank to exercise inheritance.
+    _holding_row(c, 372, "Synthetic Stable Value Fund", "", "--", "--", "$55,000.00")
     c.line(36, 358, 570, 358)
     c.setFont("Helvetica-Bold", 9)
     c.drawString(36, 342, "TOTAL ACCOUNT VALUE")

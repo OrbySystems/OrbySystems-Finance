@@ -26,7 +26,7 @@ def _statements():
 
 @pytest.mark.parametrize("want", _statements(), ids=lambda w: w["statementDate"])
 def test_extract_fidelity_synthetic(run_statement, want):
-    stmt = run_statement(want["file"])
+    stmt = run_statement(want["file"], "--expected-parser", "fidelity_brokerage.py")
     assert stmt.institution == "Fidelity Investments"
     assert stmt.statement_date == want["statementDate"]
 
@@ -85,7 +85,9 @@ def test_fidelity_merger_with_cash_payout(run_statement):
     description; the space-less "#REORCM..." reference is still read."""
     if not _EXPECT.exists():
         pytest.skip("regenerate with tests/generators/gen-fidelity-synthetic-sample.py")
-    stmt = run_statement("fidelity-synthetic-202603.pdf")
+    stmt = run_statement(
+        "fidelity-synthetic-202603.pdf", "--expected-parser", "fidelity_brokerage.py"
+    )
 
     corp = [t for t in stmt.brokerage_transactions if t.get("transaction_type") == "corporate_action"]
     out = next(t for t in corp if t["action"] == "Merger Out")
@@ -107,7 +109,7 @@ def test_extract_fidelity_synthetic_year_end(run_statement):
         pytest.skip("regenerate with tests/generators/gen-fidelity-year-end-sample.py")
     want = json.loads(_YEAR_END_EXPECT.read_text())
 
-    stmt = run_statement(want["file"])
+    stmt = run_statement(want["file"], "--expected-parser", "fidelity_brokerage.py")
     assert stmt.institution == "Fidelity Investments"
     assert stmt.statement_date == want["statementDate"]
     assert len(stmt.transactions) == 0 and len(stmt.brokerage_transactions) == 0
@@ -155,7 +157,7 @@ _COMBINED_ACCOUNTS = {
 
 
 def test_combined_statement_splits_by_account(run_statement):
-    stmt = run_statement(_COMBINED)
+    stmt = run_statement(_COMBINED, "--expected-parser", "fidelity_brokerage.py")
     assert stmt.institution == "Fidelity Investments"
     assert stmt.statement_date == "2026-08-31"
 
@@ -185,7 +187,7 @@ def test_combined_statement_keeps_loaned_securities(run_statement):
     is silent - the holdings total stops reconciling against the
     statement's own - which is how this was found on a real statement.
     """
-    stmt = run_statement(_COMBINED)
+    stmt = run_statement(_COMBINED, "--expected-parser", "fidelity_brokerage.py")
     loaned = [h for h in stmt.brokerage_holdings if h["symbol"] == "ZQLL"]
     assert len(loaned) == 1, [h["symbol"] for h in stmt.brokerage_holdings]
     assert approx(loaned[0]["current_value"], 291.00)
