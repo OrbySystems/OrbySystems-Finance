@@ -51,6 +51,18 @@ _SIGNATURE_COLUMN = "Commission & fees**"
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SLASH_DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$")
 
+# Same set institutions/vanguard_brokerage.py (the PDF statement parser)
+# treats as an internal transfer - kept in sync so a security/cash move
+# between two Vanguard accounts is classified the same way regardless of
+# which of the two ingestion paths (PDF statement vs. this Custom
+# Activity Report export) produced a given account's rows. Without this,
+# the Linker's brokerage-internal-transfer matcher (which only considers
+# rows already tagged transaction_type == "internal_transfer") can never
+# match a transfer whose two legs came in through different paths - one
+# leg silently uncancelled, double-counting that value in any recipe
+# that sums holdings/flows across accounts.
+_TRANSFER_TYPES = {"transfer", "sweep in", "sweep out", "exchange", "conversion", "rollover"}
+
 
 def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
     cols = {c.strip() for c in header}
@@ -113,6 +125,8 @@ def parse(rows: list[dict[str, str]], path: str) -> dict:
             "action": activity,
             "symbol": (row.get("Symbol") or "").strip(),
         }
+        if activity.lower() in _TRANSFER_TYPES:
+            txn["transaction_type"] = "internal_transfer"
         qty = _num(row.get("Quantity"))
         if qty is not None:
             txn["quantity"] = qty
