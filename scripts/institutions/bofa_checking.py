@@ -109,6 +109,12 @@ def _parse_transactions(pages_text: list[str]) -> list[dict]:
             transactions.append(txn)
 
     for text in pages_text:
+        # A transaction description may wrap onto following lines, but it
+        # cannot continue through a physical page boundary.  Flushing here
+        # also keeps the repeated "Account # ..." page header from being
+        # mistaken for another description line.
+        flush(pending_txn)
+        pending_txn = None
         for line in text.split("\n"):
             s = line.strip()
 
@@ -159,6 +165,16 @@ def _parse_transactions(pages_text: list[str]) -> list[dict]:
             if section_type is None:
                 continue
 
+            # BofA can place a promotional block after this marker on the
+            # same page.  It is outside the transaction table, so finish the
+            # pending row and wait for the continued section heading on the
+            # next page before accepting more rows.
+            if re.match(r"^continued on(?: the)? next page\b", s, re.IGNORECASE):
+                flush(pending_txn)
+                pending_txn = None
+                section_type = None
+                continue
+
             if re.match(
                 r"^Date\s+(Description|Check #|Transaction description)\s+Amount", s
             ):
@@ -197,7 +213,7 @@ def _parse_transactions(pages_text: list[str]) -> list[dict]:
                 }
             elif pending_txn and s and not re.match(r"^\d{2}/\d{2}/\d{2}\b", s):
                 if re.match(
-                    r"^(continued on|Total |Page |\* There|Your checking|Your savings)",
+                    r"^(Total |Page |\* There|Your checking|Your savings)",
                     s,
                     re.IGNORECASE,
                 ):

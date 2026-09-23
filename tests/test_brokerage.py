@@ -70,7 +70,7 @@ def test_vanguard_brokerage_xlsx_synthetic(run_statement):
     )
     assert stmt.institution == "Vanguard"
     assert len(stmt.transactions) == 0 and len(stmt.brokerage_holdings) == 0
-    assert len(stmt.brokerage_transactions) == 8
+    assert len(stmt.brokerage_transactions) == 10
 
     div = stmt.brokerage_transactions[0]
     assert div["date"] == "2024-01-15" and div["action"] == "Dividend"
@@ -82,6 +82,20 @@ def test_vanguard_brokerage_xlsx_synthetic(run_statement):
     assert free["symbol"] == "VTIAX" and approx(free["commission_and_fees"], 0.0)
     xfer = stmt.brokerage_transactions[7]
     assert xfer["action"] == "TRANSFER FROM BROKERAGE" and approx(xfer["amount"], 0.0)
+    assert xfer.get("transaction_type") != "internal_transfer"
+    # A real Custom Activity Report's own "Transfer"/"Sweep in" internal
+    # transfer rows - unlike the row above's speculative "TRANSFER FROM
+    # BROKERAGE" - must be classified the same way the PDF statement
+    # parser classifies them, or the Linker's brokerage-transfer matcher
+    # (which only considers transaction_type == "internal_transfer" rows)
+    # can never match a transfer whose two account legs came from this
+    # export on one side and a PDF statement on the other.
+    share_xfer = stmt.brokerage_transactions[8]
+    assert share_xfer["symbol"] == "VFIAX" and share_xfer["action"] == "Transfer"
+    assert share_xfer["transaction_type"] == "internal_transfer"
+    sweep = stmt.brokerage_transactions[9]
+    assert sweep["symbol"] == "VMFXX" and sweep["action"] == "Sweep in"
+    assert sweep["transaction_type"] == "internal_transfer"
     for i, txn in enumerate(stmt.brokerage_transactions):
         assert txn["accountType"] == "Brokerage", i
 
