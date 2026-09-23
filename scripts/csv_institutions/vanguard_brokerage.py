@@ -109,6 +109,7 @@ def parse(rows: list[dict[str, str]], path: str) -> dict:
             "date": date,
             "description": description or activity or "transaction",
             "amount": common.parse_amount(amount_raw) if amount_raw else 0.0,
+            "amount_missing": not bool(amount_raw),
             "action": activity,
             "symbol": (row.get("Symbol") or "").strip(),
         }

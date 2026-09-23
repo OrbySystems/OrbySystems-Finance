@@ -136,7 +136,7 @@ _TXN_ROW_RE = re.compile(
     r"(?P<qty>" + _NUM + r"|[-–—])\s+"
     r"(?P<price>" + _NUM + r"|[-–—])\s+"
     r"(?P<fees>" + _NUM + r"|[-–—])\s+"
-    r"(?P<amount>" + _NUM + r")$"
+    r"(?P<amount>" + _NUM + r"|[-–—])$"
 )
 _TXN_START_RE = re.compile(r"^\d{2}/\d{2}\s+\d{2}/\d{2}\s")
 _TICKER_RE = re.compile(r"^[A-Z]{2,6}$")
@@ -332,7 +332,8 @@ def _parse_txn(block_lines: list[str], anchor: date | None) -> dict | None:
     row: dict = {
         "date": _resolve_date(m.group("sdate"), anchor),
         "description": description,
-        "amount": common.parse_amount(m.group("amount")),
+        "amount": 0.0 if m.group("amount") in _DASHES else common.parse_amount(m.group("amount")),
+        "amount_missing": m.group("amount") in _DASHES,
         "action": action,
     }
     if symbol:
