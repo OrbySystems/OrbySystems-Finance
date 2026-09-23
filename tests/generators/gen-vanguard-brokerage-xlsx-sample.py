@@ -38,6 +38,12 @@ ACTIVITY = [
     ["5/03/2024", "5/01/2024", "VMFXX", "Vanguard Federal Money Market Fund", "Dividend", "CASH", "", "", "", "$3.07"],
     ["6/30/2024", "6/28/2024", "VFIAX", "Vanguard 500 Index Fund Admiral", "Capital gain (LT)", "CASH", "", "", "", "$18.44"],
     ["7/15/2024", "", "VTSAX", "Vanguard Total Stock Market Admiral", "TRANSFER FROM BROKERAGE", "CASH", "10.0000", "", "", ""],
+    # An account-to-account internal transfer, exactly as Vanguard's real
+    # Custom Activity Report prints it (Type is the plain word "Transfer"
+    # or "Sweep in"/"Sweep out" - any "TO:"/"FROM:" account detail is in
+    # the destination system, not this export's Type column).
+    ["4/09/2026", "4/09/2026", "VFIAX", "Vanguard 500 Index Fund Admiral", "Transfer", "CASH", "100.0000", "", "", ""],
+    ["4/09/2026", "4/09/2026", "VMFXX", "Vanguard Federal Money Market Fund", "Sweep in", "CASH", "", "", "", "-$25.00"],
 ]
 
 DISCLOSURES = [

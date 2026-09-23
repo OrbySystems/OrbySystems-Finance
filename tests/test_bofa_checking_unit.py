@@ -7,6 +7,43 @@ from institutions import bofa_checking
 
 
 class BofaCheckingTest(unittest.TestCase):
+    def test_page_end_promotion_and_header_do_not_extend_description(self):
+        pages = [
+            "\n".join(
+                [
+                    "Withdrawals and other subtractions",
+                    "Other subtractions",
+                    "Date Description Amount",
+                    "06/01/26 Online Scheduled Payment to ACCT# 4533 Confirmation# 2105647625 -9,916.98",
+                    "continued on the next page",
+                    "Available in English and Spanish",
+                    "Make bank transfers in the Mobile Banking app",
+                    "Page 3 of 6",
+                ]
+            ),
+            "\n".join(
+                [
+                    "00000000 00000000 ! Account # 0000 0000 8086 ! May 21, 2026 to June 22, 2026",
+                    "Withdrawals and other subtractions - continued",
+                    "Other subtractions - continued",
+                    "Date Description Amount",
+                    "06/01/26 PAYPAL DES:INST XFER ID:EXAMPLE -130.00",
+                    "ID:PAYPALSI77 WEB",
+                    "Total other subtractions -$10,046.98",
+                ]
+            ),
+        ]
+
+        transactions = bofa_checking._parse_transactions(pages)
+
+        self.assertEqual(
+            [transaction["description"] for transaction in transactions],
+            [
+                "Online Scheduled Payment to ACCT# 4533 Confirmation# 2105647625",
+                "PAYPAL DES:INST XFER ID:EXAMPLE ID:PAYPALSI77 WEB",
+            ],
+        )
+
     def test_important_messages_do_not_extend_transaction_or_account_type(self):
         pages = [
             "\n".join(
