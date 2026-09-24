@@ -1,0 +1,6 @@
+<svg width="128" height="128" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="OrbySystems">
+  <rect width="1024" height="1024" rx="220" fill="#0f1115"/>
+  <circle cx="512" cy="512" r="330" fill="#1d4ed8" fill-opacity="0.18" stroke="#3b82f6" stroke-width="52" stroke-opacity="0.82"/>
+  <circle cx="512" cy="512" r="160" fill="#3b82f6" fill-opacity="0.38"/>
+  <circle cx="512" cy="512" r="72" fill="#3b82f6"/>
+</svg>
