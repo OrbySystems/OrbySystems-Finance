@@ -652,7 +652,7 @@ _BROKERAGE_TXN_REQUIRED_KEYS = {"date", "description", "amount", "account", "acc
 _BROKERAGE_TXN_OPTIONAL_KEYS = {
     "action", "transaction_type", "subtype", "symbol", "security_id",
     "security_id_type", "quantity", "price", "commission_and_fees",
-    "currency_code", "transaction_time", "status", "reference",
+    "amount_missing", "currency_code", "transaction_time", "status", "reference",
     "cancel_reference", "provider_account_id", "institution",
     # What a sale actually realized, which the statement prints per row
     # and nothing else in this schema records - the input to any
@@ -715,7 +715,7 @@ _STRING_ROW_KEYS = {
     "market_identifier_code", "sector", "industry", "tax_lots_json",
     "realized_gain_term", "related_security_id",
 }
-_BOOL_ROW_KEYS = {"is_cash_equivalent"}
+_BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent"}
 
 
 # --- the classification vocabulary, loaded from transaction_vocabulary.json
