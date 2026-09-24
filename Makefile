@@ -1,25 +1,14 @@
-.PHONY: test venv clean regen-fixtures
+.PHONY: test test-parsers regen-fixtures clean
 
-VENV ?= .venv
-PY   := $(VENV)/bin/python
-PIP  := $(VENV)/bin/pip
+# Repository-wide entry points. Add corresponding module targets here as
+# recipes and downloaders are introduced.
+test: test-parsers
 
-# Standalone parser test suite. Provisions a local venv on first run
-# (pdfplumber, openpyxl, pytest, pillow), then runs pytest over tests/.
-test: venv
-	$(PY) -m pytest
+test-parsers:
+	$(MAKE) -C parsers test
 
-venv: $(VENV)/.stamp
-
-$(VENV)/.stamp: requirements-test.txt
-	python3 -m venv $(VENV)
-	$(PIP) install --upgrade pip
-	$(PIP) install -r requirements-test.txt
-	touch $@
-
-# Rebuild every committed synthetic fixture from its generator.
-regen-fixtures: venv
-	@for g in tests/generators/gen-*.py; do echo "=> $$g"; $(PY) "$$g"; done
+regen-fixtures:
+	$(MAKE) -C parsers regen-fixtures
 
 clean:
-	rm -rf $(VENV) .pytest_cache tests/**/__pycache__
+	$(MAKE) -C parsers clean

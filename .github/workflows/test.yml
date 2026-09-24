@@ -20,7 +20,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # Standalone: provisions .venv (pdfplumber, openpyxl, pytest,
-      # pillow) and runs pytest over tests/. The committed fixtures are
+      # pillow) and runs pytest over parsers/tests/. The committed fixtures are
       # wholly synthetic; tests over redacted real statements skip here.
       - name: Run the parser suite
         run: make test
