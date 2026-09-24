@@ -27,4 +27,9 @@ Parser-specific workflows and contribution instructions are documented in
 [`parsers/README.md`](parsers/README.md) and
 [`parsers/CLAUDE.md`](parsers/CLAUDE.md).
 
+Community contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for development and submission guidelines.
+
 The Go module path is `github.com/OrbySystems/OrbySystems-Finance`.
+
+This project is licensed under the [Apache License 2.0](LICENSE).
