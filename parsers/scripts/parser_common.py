@@ -15,7 +15,7 @@ grid_header_and_rows below for the header/footer detection that shared
 path relies on.
 
 Because bank_statement.py's --extra-parsers-dir and csv_statement.py's
---extra-parsers-dir point at the very same <orbyDir>/ingest/parsers
+--extra-parsers-dir point at the very same <orbySystemsDir>/ingest/parsers
 directory (see pyruntime.go and CLAUDE.md's "Adding a parser without
 touching this repo"), a dropped .py file of either shape gets loaded
 successfully by _load_extra_parsers under *both* dispatchers (it only
@@ -453,7 +453,7 @@ def _diagnostic_reconciliation_direction(module, error: Exception) -> str:
 
 
 def _parser_revision(module) -> int | None:
-    """Return a small bundled-parser revision useful when Orby is a dev build."""
+    """Return a small bundled-parser revision useful when OrbySystems is a dev build."""
     if not module.__name__.startswith(("institutions.", "csv_institutions.")):
         return None
     revision = getattr(module, "PARSER_REVISION", None)
@@ -490,13 +490,13 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     reference = f"{parser_id.replace('_', '-').upper()}-{code.removeprefix('PARSER_')}"
     if tier == SUPPORT_TIER_PROVISIONAL:
         message = (
-            f"Orby recognized this as a provisional {institution} format, but this "
+            f"OrbySystems recognized this as a provisional {institution} format, but this "
             f"statement layout is not covered yet. No data was imported. "
             f"Error reference: {reference}."
         )
     else:
         message = (
-            f"Orby recognized this as {institution}, but could not parse the "
+            f"OrbySystems recognized this as {institution}, but could not parse the "
             f"{stage.replace('_', ' ')} section. No data was imported. "
             f"Error reference: {reference}."
         )
@@ -719,7 +719,7 @@ _BOOL_ROW_KEYS = {"is_cash_equivalent"}
 
 
 # --- the classification vocabulary, loaded from transaction_vocabulary.json
-# so there is exactly one copy of it. Orby's Go side reads the same file out
+# so there is exactly one copy of it. OrbySystems' Go side reads the same file out
 # of the embedded scripts tree (pkg/ingest/flow.go) to build the SQL that
 # decides what counts as money moving in or out, and
 # tests/test_transaction_vocabulary.py fails CI when a bundled parser emits a

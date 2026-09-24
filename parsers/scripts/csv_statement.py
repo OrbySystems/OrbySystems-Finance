@@ -93,7 +93,7 @@ regardless of kind).
 
 Alternatively, for a parser that shouldn't live in this repo (no code
 change/recompile needed), drop a .py file exposing the same detect/parse
-contract into <orbyDir>/ingest/parsers/ (created automatically by
+contract into <orbySystemsDir>/ingest/parsers/ (created automatically by
 PyRuntime.ensure) - it's loaded dynamically via --extra-parsers-dir and
 tried after every bundled parser above that it doesn't override (see
 parser_common.load_extra_parsers and parser_common.merge_parsers). This
@@ -334,14 +334,14 @@ def main() -> None:
             # editing their local copy.
             if parser_common.bundled_shadow_identical(_PARSERS, module):
                 result.setdefault("warnings", []).append(
-                    f"This parser is already bundled with Orby as {shadowed} "
+                    f"This parser is already bundled with OrbySystems as {shadowed} "
                     f"(merged upstream) and your local copy in the parsers "
                     f"directory is identical to it - you can remove it from "
                     f"Manage Parsers."
                 )
             else:
                 result.setdefault("warnings", []).append(
-                    f"This parser is now also bundled with Orby as {shadowed} "
+                    f"This parser is now also bundled with OrbySystems as {shadowed} "
                     f"(it was merged upstream). Your local copy in the parsers "
                     f"directory has changes and is taking precedence; remove it "
                     f"from Manage Parsers once you're done to use the bundled "

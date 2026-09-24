@@ -10,7 +10,7 @@ strictly validated by `scripts/parser_common.py`
 (`validate_parse_result` / `validate_multi_table_parse_result`) before it
 is printed as JSON — an extra, missing, or wrong-typed key fails loudly
 with a message naming the parser and field, never silently as zeroed
-data. Orby re-checks the same shape on the Go side
+data. OrbySystems re-checks the same shape on the Go side
 (`json.Decoder.DisallowUnknownFields`).
 
 ## `detect()`
@@ -115,12 +115,12 @@ other side — its identifier in `related_security_id`.
 | `transaction_type` | the **machine-readable classification**. | closed vocabulary — `parse()` rejects anything else by name |
 
 The vocabulary lives in `scripts/transaction_vocabulary.json`, which is the
-single copy: `parser_common.py` validates against it and Orby reads the same
+single copy: `parser_common.py` validates against it and OrbySystems reads the same
 file out of the embedded scripts tree to build the SQL that decides what
 counts as money moving.
 
 **This matters most for money entering or leaving an account**, because every
-growth figure Orby reports is computed net of it. A contribution that nothing
+growth figure OrbySystems reports is computed net of it. A contribution that nothing
 recognises as a contribution is not an error and not a gap — it is reported
 as *investment gain*, and the account appears to have earned its own
 deposits. Detection used to be two words (`action IN ('Deposit',
@@ -145,7 +145,7 @@ What actually closes the hole is that an **unrecognised word is reported**:
 - a row that sets none is classified by `action` alone, so that word must
   appear somewhere in the vocabulary. For a bundled parser,
   `tests/test_transaction_vocabulary.py` fails CI. For a user's own parser,
-  Orby warns at import that those rows are not being counted as money moving.
+  OrbySystems warns at import that those rows are not being counted as money moving.
 
 Adding a word is one line of JSON — in `flows[].actions` if it means money
 moved, in `non_flow_actions` if it does not. Setting `transaction_type` is

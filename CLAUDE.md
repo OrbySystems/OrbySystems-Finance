@@ -1,6 +1,6 @@
-# Orby systems development
+# OrbySystems Finance development
 
-This repository contains independently organized systems consumed by Orby.
+This repository contains independently organized systems consumed by OrbySystems.
 Keep each system's implementation, tests, dependencies, contracts, and detailed
 contribution instructions within its own directory.
 

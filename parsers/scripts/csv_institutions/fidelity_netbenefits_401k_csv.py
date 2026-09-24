@@ -72,7 +72,7 @@ event classifies identically regardless of which export produced it
     income, subtype other_income (matches the PDF sibling exactly; raw
     text here is all-caps, so the action is normalized to title case)
 
-Amounts already print in Orby's own sign convention (money in positive,
+Amounts already print in OrbySystems' own sign convention (money in positive,
 money out negative, e.g. an Exchange Out row is negative) - no
 negation step needed, same as Vanguard's Custom Activity Report.
 """

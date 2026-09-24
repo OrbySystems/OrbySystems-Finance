@@ -4,7 +4,7 @@
 This is a different document family from Schwab's retail brokerage account
 statement.  It prints a period-level account-value bridge and an ending fund
 snapshot, but no itemized transaction ledger or account number.  The parser
-therefore emits contribution/fee summary rows and holdings; Orby's shared
+therefore emits contribution/fee summary rows and holdings; OrbySystems' shared
 missing-account resolver asks the user for an identifier before insertion.
 """
 

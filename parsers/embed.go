@@ -1,11 +1,11 @@
 // Package parsers embeds the bundled statement/transaction parsers
 // (the Python dispatchers, the per-institution parser modules, and the
 // shared parse() IO contract in parser_common.py) plus their standalone
-// test suite, so a Go program - Orby - can write the whole tree to disk
+// test suite, so a Go program - OrbySystems - can write the whole tree to disk
 // and run it without carrying its own copy.
 //
 // The Python side of this directory runs standalone with no Go at all (see
-// Makefile and pyproject.toml). The Go package lets Orby embed the same tree
+// Makefile and pyproject.toml). The Go package lets OrbySystems embed the same tree
 // directly rather than maintaining a build-time copy step.
 package parsers
 
@@ -28,7 +28,7 @@ var ScriptsFS embed.FS
 
 // TestsFS holds the standalone pytest suite under tests/ - conftest.py,
 // the converted regression tests, the committed synthetic fixtures, and
-// the fixture generators. Orby writes this alongside ScriptsFS when a
+// the fixture generators. OrbySystems writes this alongside ScriptsFS when a
 // user runs the parser test suite from the app (Build Transactions
 // Extractor -> Manage Parsers -> Run Tests).
 //
@@ -41,7 +41,7 @@ var TestsFS embed.FS
 //
 // Shipped as PDFs the user INGESTS rather than as rows loaded straight
 // into a database, because the parse is both the step people doubt and
-// the step that convinces them. Someone trying Orby without handing it
+// the step that convinces them. Someone trying OrbySystems without handing it
 // their own money should still watch it recognise an institution, pull
 // out positions, and answer from them - a loader that skipped all that
 // would prove only that we can render a table.

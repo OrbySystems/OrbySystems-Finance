@@ -1,5 +1,5 @@
 """Regression coverage for the '-'/'_' insensitive parser identity used
-when a locally-built parser (dash-named by Orby's Build Transactions
+when a locally-built parser (dash-named by OrbySystems' Build Transactions
 Extractor) and its upstream-merged bundled copy (dash->underscore
 normalized) are the same parser:
 

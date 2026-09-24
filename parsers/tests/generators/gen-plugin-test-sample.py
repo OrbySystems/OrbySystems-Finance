@@ -4,7 +4,7 @@ external-parser-plugin tests in pkg/ingest/extra_parsers_test.go.
 
 Unlike the bank-format fixtures (e.g. gen-wells-fargo-sample.py), this
 one isn't modeling any real statement layout - it exists purely to give
-a test-only external parser plugin (dropped into <orbyDir>/ingest/
+a test-only external parser plugin (dropped into <orbySystemsDir>/ingest/
 parsers/ at test time) something with distinctive marker text to
 detect() on. A single page of plain text is enough; no column layout or
 multi-page handling is exercised here, since that's not what this fixture

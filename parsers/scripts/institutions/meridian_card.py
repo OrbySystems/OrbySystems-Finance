@@ -22,7 +22,7 @@ issuer's format. See tests/generators/gen-demo-household.py.
 # The sign convention, which is the whole of the work here
 
 The statement prints a charge as POSITIVE, because that is how the card's
-own balance moves - a purchase increases what is owed. Orby signs every
+own balance moves - a purchase increases what is owed. OrbySystems signs every
 amount by how it affects the money the account holder actually has, the
 same way across every account type, so a charge is NEGATIVE and a payment
 is positive.

@@ -6,7 +6,7 @@ Advisor Services statement, pending/open activity is not emitted, duplicated
 Bank Sweep activity is reconciled but not emitted, and every printed control
 total we understand must foot before data is returned.
 
-The module follows Orby's bundled brokerage PDF-parser contract and is
+The module follows OrbySystems' bundled brokerage PDF-parser contract and is
 auto-discovered by ``bank_statement.py``.
 """
 
@@ -748,7 +748,7 @@ def _positioned_transaction(
     if transaction_type == "corporate_action":
         # Schwab prints a market value for stock-plan/share movements in
         # the Amount column, but explicitly excludes Other Activity from
-        # its cash equation. Orby's amount is cash movement, so it is zero.
+        # its cash equation. OrbySystems' amount is cash movement, so it is zero.
         amount = 0.0
     elif printed_amount is None:
         raise ValueError(f"missing amount for positioned Schwab {category!r} row")

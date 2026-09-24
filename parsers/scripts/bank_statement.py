@@ -110,7 +110,7 @@ manual list.
 
 Alternatively, for a parser that shouldn't live in this repo (no code
 change/recompile needed), drop a .py file exposing the same detect/parse
-contract into <orbyDir>/ingest/parsers/ (created automatically by
+contract into <orbySystemsDir>/ingest/parsers/ (created automatically by
 PyRuntime.ensure) - it's loaded dynamically via --extra-parsers-dir and
 tried after every bundled parser above that it doesn't override (see
 parser_common.load_extra_parsers and parser_common.merge_parsers). To
@@ -130,7 +130,7 @@ repo" for exactly what that means and its limitations (no network
 access, no arbitrary filesystem access, no per-plugin dependency
 installation).
 
-<orbyDir>/ingest/parsers/ is shared with csv_statement.py's own
+<orbySystemsDir>/ingest/parsers/ is shared with csv_statement.py's own
 --extra-parsers-dir - a CSV-shaped detect()/parse() module dropped there
 is simply never matched by this dispatcher (its detect() gets called
 with the wrong number of arguments, which surfaces as an ordinary
@@ -318,13 +318,13 @@ def _attach_shadow_warning(result: dict, module, only_extra_parser) -> None:
         return
     if parser_common.bundled_shadow_identical(_PARSERS, module):
         result.setdefault("warnings", []).append(
-            f"This parser is already bundled with Orby as {shadowed} (merged "
+            f"This parser is already bundled with OrbySystems as {shadowed} (merged "
             f"upstream) and your local copy in the parsers directory is "
             f"identical to it - you can remove it from Manage Parsers."
         )
     else:
         result.setdefault("warnings", []).append(
-            f"This parser is now also bundled with Orby as {shadowed} (it was "
+            f"This parser is now also bundled with OrbySystems as {shadowed} (it was "
             f"merged upstream). Your local copy in the parsers directory has "
             f"changes and is taking precedence; remove it from Manage Parsers "
             f"once you're done to use the bundled version."

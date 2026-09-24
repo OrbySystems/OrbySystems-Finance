@@ -19,7 +19,7 @@ disclosures block (parser_common.grid_header_and_rows), so parse() only
 ever sees real activity rows.
 
 Amounts print in Vanguard's own sign (money in positive, money out
-negative), which is already Orby's convention - returned as-is, no flip.
+negative), which is already OrbySystems' convention - returned as-is, no flip.
 A share-only movement with no cash (an internal "Transfer from ...")
 has a blank Amount and is emitted with amount 0.0.
 """

@@ -4,7 +4,7 @@
   "_doc": [
     "The classification vocabulary for brokerage_transactions rows, and the",
     "single source of truth for it: parser_common.py validates against this",
-    "file, Orby's pkg/ingest reads the same file out of the embedded scripts",
+    "file, OrbySystems' pkg/ingest reads the same file out of the embedded scripts",
     "tree to build its SQL, and tests/test_transaction_vocabulary.py fails CI",
     "when a bundled parser emits a word that is not here.",
     "",
@@ -29,7 +29,7 @@
     "SO: classify with transaction_type. The action lists below are a safety",
     "net for rows that carry no classification - they are a convenience, not",
     "the guarantee. The guarantee is that an unrecognised word is REPORTED",
-    "(Orby warns at import) and, for a bundled parser, FAILS CI."
+    "(OrbySystems warns at import) and, for a bundled parser, FAILS CI."
   ],
 
   "transaction_types": [
@@ -126,7 +126,7 @@
   ],
 
   "_non_flow_actions_doc": [
-    "THE CLOSURE RULE, which is what the CI check and Orby's import guard",
+    "THE CLOSURE RULE, which is what the CI check and OrbySystems' import guard",
     "both apply:",
     "",
     "  a row that sets transaction_type is CLASSIFIED - its action is free",
@@ -137,7 +137,7 @@
     "  a row that sets NO transaction_type is classified by its action alone,",
     "  so that action must appear either in a flows[].actions list above or",
     "  in non_flow_actions below. A word in neither list is a word nobody has",
-    "  looked at: CI fails for a bundled parser, and Orby warns at import for",
+    "  looked at: CI fails for a bundled parser, and OrbySystems warns at import for",
     "  a user-supplied one.",
     "",
     "So this list is not a catalogue of everything a statement can say. It is",

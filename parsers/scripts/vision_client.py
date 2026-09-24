@@ -38,7 +38,7 @@ def call_vision(vision: dict, image_b64: str, prompt: str, image_format: str = "
             }
         ],
         "temperature": 0,
-        # Qwen3.5 (Orby's builtin model family) is a reasoning model that
+        # Qwen3.5 (OrbySystems' builtin model family) is a reasoning model that
         # otherwise burns most of its token budget on a <think> block
         # before answering - same accuracy, 2-2.5x faster with this off
         # (see README_bankcheck_ocr.md). Non-Qwen3.5 endpoints simply

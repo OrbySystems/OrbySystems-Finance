@@ -25,7 +25,7 @@ real format this is modeled on may differ in exact proportions/DPI.
 
 Regenerate with:  python3 test/gen-bofa-stmt-checks-sample.py
 (needs Pillow - use the ingest venv's python, e.g.
-~/.orby/ingest/venv/bin/python3, which already has it as a pikepdf
+~/.orbysystems/ingest/venv/bin/python3, which already has it as a pikepdf
 dependency)
 """
 

@@ -49,7 +49,7 @@ def build() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(OUT), pagesize=landscape(letter), invariant=1)
     c.setTitle("Synthetic ETRADE at Work Client Statement")
-    c.setAuthor("Orby parser test fixture")
+    c.setAuthor("OrbySystems parser test fixture")
 
     _header(c, 1)
     c.setFont("Helvetica-Bold", 9)

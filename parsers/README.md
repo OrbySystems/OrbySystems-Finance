@@ -1,9 +1,9 @@
 # Parsers
 
-Bank, brokerage, and CSV/spreadsheet statement parsers for
-[Orby](https://github.com/edgexr/orby)'s transaction ingest. This directory
+Bank, brokerage, and CSV/spreadsheet statement parsers for OrbySystems' transaction
+ingest. This directory
 lets users contribute parsers for their own institutions for others to
-use, and runs standalone — no Orby checkout needed.
+use, and runs standalone — no OrbySystems checkout needed.
 
 ## Layout
 
@@ -63,7 +63,7 @@ first real statement for each layout becomes available.
 Provisional parser modules declare `SUPPORT_TIER = "provisional"`. When a
 parser recognizes a statement but cannot parse its layout, the dispatcher
 returns a stable error code and a structured diagnostic instead of exposing
-the parser's raw exception. Orby's Add Source dialog lets the user inspect the
+the parser's raw exception. OrbySystems' Add Source dialog lets the user inspect the
 complete diagnostic before copying it or opening a GitHub issue; nothing is
 sent automatically.
 
@@ -80,7 +80,7 @@ declares the repair-grade fields.
 
 Reportable diagnostics may contain the parser/institution identifier, support
 tier, failure stage, page/row counts, public section-presence flags, stable
-module-allowlisted field-presence flags and missing-field identifiers, and Orby runtime version. A parser can
+module-allowlisted field-presence flags and missing-field identifiers, and OrbySystems runtime version. A parser can
 also attach allowlisted category signals, structural row counts, a parser
 revision, and the direction (but never the amount) of a reconciliation gap.
 This is enough to distinguish common missing flows such as contributions,
@@ -117,11 +117,11 @@ python scripts/bank_statement.py <statement.pdf> --dump-text  # raw extracted te
 python scripts/csv_statement.py  <export.csv|.xlsx> --dump-rows
 ```
 
-## How Orby uses these parsers
+## How OrbySystems uses these parsers
 
-Orby vendors this repository as a git submodule and imports its
+OrbySystems vendors this repository as a git submodule and imports its
 `parsers` Go package. The package `//go:embed`s `scripts/`, `tests/`, and
 `demo/` through `embed.go`.
-At runtime Orby writes the tree out and runs the dispatchers in a
+At runtime OrbySystems writes the tree out and runs the dispatchers in a
 sandbox. Users can also drop extra parser `.py` files into
-`~/.orby/ingest/parsers/` without touching either repo — see `CLAUDE.md`.
+`~/.orbysystems/ingest/parsers/` without touching either repo — see `CLAUDE.md`.
