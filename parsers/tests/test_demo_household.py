@@ -27,7 +27,7 @@ SCRIPTS = REPO / "scripts"
 BROKERAGE = sorted(DEMO.glob("vantage-brokerage-*.pdf"))
 CARDS = sorted(DEMO.glob("meridian-card-*.pdf"))
 
-# Orby also runs this suite from the copy it embeds, so that a user who
+# OrbySystems also runs this suite from the copy it embeds, so that a user who
 # drops in their own parser can test it from the app. That copy carries
 # scripts/ and tests/ but not demo/, which is embedded separately and
 # shipped as product content rather than as fixtures - so from there, none
@@ -129,7 +129,7 @@ def test_the_ledger_balances():
 
 
 @pytest.mark.parametrize("path", CARDS, ids=lambda p: p.name)
-def test_card_statement_parses_with_orby_signs(path):
+def test_card_statement_parses_with_orbysystems_signs(path):
     obj = run(path)
     assert obj["institution"] == "Meridian Card"
     txns = obj["tables"]["cash_transactions"]
@@ -139,7 +139,7 @@ def test_card_statement_parses_with_orby_signs(path):
     payments = [t for t in txns if "AUTOPAY" in t["description"]]
     assert payments, "no payment row, so the sign convention is untested"
 
-    # Orby's convention, not the issuer's: negative means poorer. A
+    # OrbySystems' convention, not the issuer's: negative means poorer. A
     # statement read in the issuer's own signs produces a household that
     # appears to earn money by buying groceries.
     assert all(t["amount"] < 0 for t in charges), "a purchase is not negative"

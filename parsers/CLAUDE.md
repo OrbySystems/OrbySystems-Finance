@@ -36,7 +36,7 @@ common`.
 
 ## Workflow
 
-1. Get a **sample file**. For a PDF, redact a real statement (Orby's
+1. Get a **sample file**. For a PDF, redact a real statement (OrbySystems'
    Tools → PDF Redactor) or invent a synthetic one the way
    `tests/generators/gen-*.py` do. For a CSV/`.xlsx`, export it and strip
    account-identifying cells — and note which institution it's from, the
@@ -59,7 +59,7 @@ common`.
 6. From this directory, run `make test`; from the repository root, run
    `make test-parsers` or `make test`.
 
-Many parsers here arrive as PRs opened from Orby's "Submit via git/gh"
+Many parsers here arrive as PRs opened from OrbySystems' "Submit via git/gh"
 button (Build Transactions Extractor → Manage Parsers): a user generates
 a parser against their own statement and contributes it back. Those PRs
 carry the parser under `scripts/<institutions|csv_institutions>/`
@@ -71,20 +71,20 @@ hand-written parser.
 
 ## Fixing a bundled parser without a release
 
-Copy the bundled module to `~/.orby/ingest/parsers/<same-name>.py`, edit
+Copy the bundled module to `~/.orbysystems/ingest/parsers/<same-name>.py`, edit
 it there. A same-named file in that directory *replaces* the bundled
 module at its original position in the try order
 (`parser_common.merge_parsers`). A differently-named file is a new
 parser, tried after all bundled ones.
 
 Name matching here is `-`/`_` insensitive (`parser_common.parser_name_key`):
-a parser built locally by Orby's Build Transactions Extractor is
+a parser built locally by OrbySystems' Build Transactions Extractor is
 dash-named (`foo-bar-pdf.py`), and once contributed upstream it ships
 bundled dash→underscore-normalized (`foo_bar_pdf.py`) — these are treated
 as the same parser, so the still-present local copy keeps overriding the
 now-bundled one and the user can go on editing it. The dispatchers report
 that collision as a non-fatal `warnings` entry in their JSON output
-(`parser_common.bundled_shadow_of`), which Orby surfaces on the Verify
+(`parser_common.bundled_shadow_of`), which OrbySystems surfaces on the Verify
 step rather than failing. If the local copy is byte-identical to the
 bundled one apart from a leading SPDX header / trailing whitespace
 (`parser_common.bundled_shadow_identical`), the warning instead says the

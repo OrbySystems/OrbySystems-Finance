@@ -9,7 +9,7 @@
     "these, or it can answer 'what do I own' and nothing about what it costs.",
     "",
     "WHY THIS FILE RATHER THAN CONSTANTS ON EITHER SIDE. The generator builds",
-    "statements around these numbers and asserts the lessons still land; Orby",
+    "statements around these numbers and asserts the lessons still land; OrbySystems",
     "reads the same file to seed the project's profile. Two copies would drift,",
     "and the failure would be quiet: the household would still look plausible",
     "while the headroom the onboarding copy quotes stopped being true.",

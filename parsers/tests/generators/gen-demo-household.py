@@ -2,7 +2,7 @@
 """Generates the bundled example household: six brokerage statements and
 two credit-card statements for a household that does not exist.
 
-WHY THIS EXISTS. Someone evaluating Orby who will not go and find their
+WHY THIS EXISTS. Someone evaluating OrbySystems who will not go and find their
 own statement is a normal person, not a lost cause - but a demo that
 loads rows straight into the database skips the parse, and the parse is
 both the step users doubt and the step that convinces them. So these are
@@ -51,7 +51,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "demo
 #   Headroom: 5,800. The 24% bracket is 31,400 away and NIIT 37,800 away,
 #   so the NEAREST line is a cliff rather than a slope - which is the
 #   single most useful thing this product teaches.
-# Read from demo/household.json rather than restated here: Orby seeds the
+# Read from demo/household.json rather than restated here: OrbySystems seeds the
 # project's profile from that same file, and two copies of a household's
 # income would drift silently - the statements would still look plausible
 # while the headroom the onboarding copy quotes stopped being true.
@@ -425,7 +425,7 @@ def check():
     headroom = IRMAA_TIER1_MFJ_2026 - magi
     assert abs(headroom - EXPECTED_HEADROOM) < 0.01, (
         f"IRMAA headroom is {headroom:,.2f} but household.json says {EXPECTED_HEADROOM:,.2f} - "
-        f"the profile Orby seeds and the lesson the copy quotes have come apart")
+        f"the profile OrbySystems seeds and the lesson the copy quotes have come apart")
 
     # 2. One position dominates the taxable account, with a large gain.
     acct, _type, holdings = ACCOUNTS[0]

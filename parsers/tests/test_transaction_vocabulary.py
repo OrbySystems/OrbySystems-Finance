@@ -8,7 +8,7 @@ account appear to have earned its own deposits, with no warning anywhere. The
 parser store makes that likely by design: the whole point is that strangers
 write parsers for institutions nobody here has seen.
 
-So the closure rule, which is also what Orby's import guard applies:
+So the closure rule, which is also what OrbySystems' import guard applies:
 
   * a row that sets `transaction_type` is classified. Its `action` is free
     prose and is not checked - a corporate action's label is lifted verbatim

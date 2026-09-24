@@ -1,6 +1,6 @@
-# Orby systems
+# OrbySystems Finance
 
-Community-maintained systems used by [Orby](https://github.com/edgexr/orby).
+Community-maintained financial systems used by OrbySystems.
 The repository currently contains statement parsers and is structured to also
 host recipes and statement downloaders.
 
@@ -27,6 +27,4 @@ Parser-specific workflows and contribution instructions are documented in
 [`parsers/README.md`](parsers/README.md) and
 [`parsers/CLAUDE.md`](parsers/CLAUDE.md).
 
-The repository has not yet been renamed, so its Go module remains
-`github.com/edgexr/orby-parsers`. After the planned rename, update the module
-path to `github.com/edgexr/orby-systems` and update consumers at the same time.
+The Go module path is `github.com/OrbySystems/OrbySystems-Finance`.

@@ -1,6 +1,6 @@
 """Shared test helpers for the standalone parser suite.
 
-Mirrors what Orby's Go side (pkg/ingest) does in production: shell out to
+Mirrors what OrbySystems' Go side (pkg/ingest) does in production: shell out to
 the right dispatcher (bank_statement.py for a PDF, csv_statement.py for a
 .csv/.xlsx), then assert on the JSON it prints to stdout. Nothing here
 imports the parser modules directly - the dispatchers own the
@@ -36,7 +36,7 @@ def pytest_addoption(parser):
         default=None,
         help="Directory of user-dropped parser .py files to load alongside the "
         "bundled ones (mirrors the dispatchers' --extra-parsers-dir). Used when "
-        "Orby runs this suite with a custom parser included.",
+        "OrbySystems runs this suite with a custom parser included.",
     )
 
 

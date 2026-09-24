@@ -1,3 +1,3 @@
-module github.com/edgexr/orby-parsers
+module github.com/OrbySystems/OrbySystems-Finance
 
 go 1.26

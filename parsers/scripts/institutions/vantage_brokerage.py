@@ -29,7 +29,7 @@ holdings table and an activity table:
 Every activity row sets `transaction_type` from the closed vocabulary in
 scripts/transaction_vocabulary.json rather than relying on `action` alone.
 That is the point of the vocabulary: money entering or leaving has to be
-recognisable as such, because every growth figure Orby reports is computed
+recognisable as such, because every growth figure OrbySystems reports is computed
 net of it, and a contribution nothing recognises is reported as investment
 gain. A parser written today has no excuse for leaving that to convention.
 """
