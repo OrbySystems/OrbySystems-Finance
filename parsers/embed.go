@@ -1,15 +1,13 @@
-// Package orbyparsers embeds the bundled statement/transaction parsers
+// Package parsers embeds the bundled statement/transaction parsers
 // (the Python dispatchers, the per-institution parser modules, and the
 // shared parse() IO contract in parser_common.py) plus their standalone
 // test suite, so a Go program - Orby - can write the whole tree to disk
 // and run it without carrying its own copy.
 //
-// The Python side of this repo runs standalone with no Go at all (see
-// the top-level Makefile / pyproject.toml). This file exists purely so
-// Orby's build can //go:embed the same tree via a replace directive
-// (github.com/edgexr/orby-parsers => ./submodules/parsers) rather than a
-// build-time copy step.
-package orbyparsers
+// The Python side of this directory runs standalone with no Go at all (see
+// Makefile and pyproject.toml). The Go package lets Orby embed the same tree
+// directly rather than maintaining a build-time copy step.
+package parsers
 
 import (
 	"embed"
