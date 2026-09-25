@@ -36,6 +36,7 @@ should be considered production-hardened.
 | Vanguard | **Broad** | Voyager and Personal Investor brokerage PDFs plus Custom Activity CSV/XLSX |
 | Merrill / Merrill Edge | **Partial + provisional** | Existing CMA coverage plus provisional Wealth Management coverage; Trust remains unsupported |
 | J.P. Morgan Wealth Management / Self-Directed Investing | **Provisional** | Investment statement family, distinct from Chase banking and credit-card statements |
+| Morgan Stanley Global Stock Plan Services | **Provisional** | Participant share purchase quarterly statement with releases, sales, and proceeds disbursements; validated against one 2021 statement |
 | Morgan Stanley Wealth Management | **Provisional** | Wealth Management client statement, distinct from E*TRADE |
 | E*TRADE from Morgan Stanley | **Provisional** | Morgan Stanley at Work client statement validated for cash-only, zero-activity periods; itemized activity layouts still need validation |
 | Wells Fargo Advisors / WellsTrade | **Provisional** | Investment statement family, distinct from Wells Fargo checking statements |
