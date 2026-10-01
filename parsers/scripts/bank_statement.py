@@ -158,6 +158,8 @@ has a bug" - the latter only ever surfaces once the named parser is
 confirmed to be the one that actually ran.
 """
 
+import contextlib
+import io
 import json
 import sys
 
@@ -181,6 +183,18 @@ _DETECT_PAGE_COUNT = 3
 
 # --- parse() IO contract enforcement, extra-parsers loading, and
 # dispatch are shared with csv_statement.py - see parser_common.py. ---
+
+
+def _without_parser_stdout(fn, *args):
+    """Calls third-party parser code without letting incidental prints
+    corrupt the dispatcher's single-JSON-document stdout contract.
+
+    Dropped-in parsers are user-authored and commonly retain debugging
+    ``print()`` calls.  Discard those writes rather than forwarding them to
+    stderr, since they can contain statement transaction details.
+    """
+    with contextlib.redirect_stdout(io.StringIO()):
+        return fn(*args)
 
 
 def _dump_text(pdf_path: str) -> None:
@@ -267,7 +281,9 @@ def main() -> None:
                 "pageCount": len(pdf.pages),
                 "textPageCount": sum(1 for text in head_text if text.strip()),
             }
-            module, reason = parser_common.detect(lambda m: m.detect(joined_head_text), parsers)
+            module, reason = parser_common.detect(
+                lambda m: _without_parser_stdout(m.detect, joined_head_text), parsers
+            )
             if msg := parser_common.check_expected_parser(module, reason, expected_parser):
                 print(json.dumps({"error": msg}))
                 sys.exit(1)
@@ -289,7 +305,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        result = _parse_matched(module, pages_text, pdf_path, vision)
+        result = _without_parser_stdout(_parse_matched, module, pages_text, pdf_path, vision)
     except Exception as e:  # noqa: BLE001
         message, diagnostic = parser_common.parser_failure(
             module, e, "pdf", input_stats, "\n".join(pages_text)

@@ -28,9 +28,11 @@ vice versa) without either dispatcher needing to know which shape a
 given file is - see _detect's docstring.
 """
 
+import contextlib
 import glob
 import importlib
 import importlib.util
+import io
 import json
 import os
 import pkgutil
@@ -960,7 +962,11 @@ def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name
             if spec is None or spec.loader is None:
                 raise ImportError("could not create module spec")
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            # A dropped-in module can contain temporary top-level print()
+            # calls. Keep those from violating the dispatchers' JSON-only
+            # stdout contract or exposing statement-related debug text.
+            with contextlib.redirect_stdout(io.StringIO()):
+                spec.loader.exec_module(module)
             if not (hasattr(module, "detect") and hasattr(module, "parse")):
                 raise AttributeError("module must define detect(...) and parse(...)")
         except Exception as e:  # noqa: BLE001

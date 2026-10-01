@@ -128,8 +128,10 @@ module's parse() (see parser_common.check_expected_parser and
 bank_statement.py's own --expected-parser doc for the full rationale).
 """
 
+import contextlib
 import csv
 import datetime
+import io
 import json
 import sys
 
@@ -146,6 +148,16 @@ _PARSERS = parser_common.discover_parsers(csv_institutions)
 # Number of leading data rows read (alongside the header) to identify
 # the export format before committing to parsing the rest of the file.
 _DETECT_SAMPLE_ROWS = 10
+
+
+def _without_parser_stdout(fn, *args):
+    """Calls third-party parser code while preserving JSON-only stdout.
+
+    Debug prints from dropped-in parsers are discarded because they can both
+    break the caller's JSON decoder and expose transaction details in logs.
+    """
+    with contextlib.redirect_stdout(io.StringIO()):
+        return fn(*args)
 
 
 def _xlsx_cell(value) -> str:
@@ -287,7 +299,9 @@ def main() -> None:
         print(json.dumps({"error": f"failed to read the export: {e}"}))
         sys.exit(1)
 
-    module, reason = parser_common.detect(lambda m: m.detect(header, sample_rows), parsers)
+    module, reason = parser_common.detect(
+        lambda m: _without_parser_stdout(m.detect, header, sample_rows), parsers
+    )
     if msg := parser_common.check_expected_parser(module, reason, expected_parser):
         print(json.dumps({"error": msg}))
         sys.exit(1)
@@ -307,7 +321,7 @@ def main() -> None:
     rows = None
     try:
         rows = _read_rows(csv_path, header)
-        result = _parse_matched(module, rows, csv_path)
+        result = _without_parser_stdout(_parse_matched, module, rows, csv_path)
     except Exception as e:  # noqa: BLE001
         input_stats = {"columnCount": len(header)}
         if rows is not None:

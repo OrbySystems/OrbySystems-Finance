@@ -88,6 +88,8 @@ _GENERATE_ON_DEMAND = {
     "bofa-checking-combined-2018-synthetic-sample.pdf": "gen-bofa-checking-combined-2018-sample.py",
     "bofa-combined-2012-synthetic-sample.pdf": "gen-bofa-combined-2012-sample.py",
     "bofa-savings-legacy-single-account-synthetic-sample.pdf": "gen-bofa-savings-legacy-single-account-sample.py",
+    "citi-costco-synthetic-sample.pdf": "gen-citi-costco-sample.py",
+    "citi-annual-synthetic-sample.pdf": "gen-citi-costco-sample.py",
 }
 
 

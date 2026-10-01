@@ -4,7 +4,11 @@ here is a committed or on-demand-generated synthetic PDF, so this is the
 portable regression net that runs everywhere.
 """
 
+import pytest
+
+import parser_common
 from conftest import approx
+from institutions import citi_credit_card
 
 
 def _running_balance(txns, opening):
@@ -84,6 +88,98 @@ def test_chase_synthetic(run_statement):
     assert "ORD LHR" in stmt.transactions[3]["description"]
     foreign = stmt.transactions[6]["description"]
     assert "POUND STERLING" in foreign and "EXCHG RATE" in foreign
+
+
+def test_citi_costco_synthetic(run_statement):
+    stmt = run_statement(
+        "citi-costco-synthetic-sample.pdf",
+        "--expected-parser",
+        "citi_credit_card.py",
+    )
+    assert stmt.institution == "Citi"
+    assert stmt.first_account == "4455"
+    assert stmt.first_account_type == "Credit Card"
+    assert stmt.statement_date == "2026-09-14"
+    assert len(stmt.transactions) == 6
+
+    closing = _running_balance(stmt.transactions, -300.00)
+    assert approx(closing, -385.00)
+
+    payment, credit, purchase = stmt.transactions[:3]
+    assert payment["date"] == "2026-09-10"
+    assert payment["description"].startswith("AUTOPAY")
+    assert approx(payment["amount"], 300.00)
+    assert credit["date"] == "2026-09-11"
+    assert approx(credit["amount"], 25.00)
+    assert purchase["date"] == "2026-08-21"
+    assert approx(purchase["amount"], -45.00)
+
+
+def test_citi_costco_rejects_dropped_or_changed_activity(dump_pages):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    broken = [page.replace("$250.00", "$251.00") for page in pages]
+    with pytest.raises(ValueError, match="does not reconcile"):
+        citi_credit_card.parse(broken, "unused.pdf")
+
+
+def test_citi_annual_summary_synthetic(run_statement):
+    stmt = run_statement(
+        "citi-annual-synthetic-sample.pdf",
+        "--expected-parser",
+        "citi_credit_card.py",
+    )
+    assert stmt.institution == "Citi"
+    assert stmt.statement_date == "2025-12-31"
+    assert len(stmt.transactions) == 7
+    assert all(t["accountType"] == "Credit Card" for t in stmt.transactions)
+    assert all(t["balance"] is None for t in stmt.transactions)
+
+    alice = [t for t in stmt.transactions if t["account"] == "1111"]
+    bob = [t for t in stmt.transactions if t["account"] == "2222"]
+    assert len(alice) == 4
+    assert len(bob) == 3
+    assert approx(sum(t["amount"] for t in alice), -225.00)
+    assert approx(sum(t["amount"] for t in bob), -220.00)
+    refund = next(t for t in bob if "RETURN" in t["description"])
+    assert approx(refund["amount"], 20.00)
+
+
+def test_citi_annual_rejects_changed_complete_category_subtotal(dump_pages):
+    pages = dump_pages("citi-annual-synthetic-sample.pdf")
+    broken = [page.replace("Subtotal $150.00", "Subtotal $151.00") for page in pages]
+    with pytest.raises(ValueError, match="subtotal does not reconcile"):
+        citi_credit_card.parse(broken, "unused.pdf")
+
+
+def test_citi_generic_card_layout_is_claimed_for_provisional_diagnostics():
+    text = """Citi Card
+Payment Due Date 10/15/2026
+Minimum Payment Due $25.00
+Credit Limit $10,000.00
+New Balance $500.00
+"""
+    matched, reason = citi_credit_card.detect(text)
+    assert matched is True
+    assert "provisional Citi credit-card" in reason
+
+    with pytest.raises(parser_common.ParserDiagnosticError) as exc:
+        citi_credit_card.parse([text], "unused.pdf")
+    assert exc.value.diagnostic_code == "PARSER_REQUIRED_DATA_MISSING"
+    assert exc.value.diagnostic_stage == "metadata"
+    assert exc.value.missing_fields == ("billingPeriod",)
+    message, diagnostic = parser_common.parser_failure(
+        citi_credit_card,
+        exc.value,
+        "pdf",
+        {"pageCount": 1, "textPageCount": 1},
+        text,
+    )
+    assert "provisional Citi" in message
+    assert diagnostic["parserId"] == "citi_credit_card"
+    assert diagnostic["supportTier"] == "provisional"
+    assert diagnostic["missingFields"] == ["billingPeriod"]
+    assert diagnostic["fieldPresence"]["paymentDueDate"] is True
+    assert diagnostic["fieldPresence"]["minimumPaymentDue"] is True
 
 
 def test_bofa_credit_card(run_statement):
