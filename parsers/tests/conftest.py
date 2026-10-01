@@ -90,6 +90,7 @@ _GENERATE_ON_DEMAND = {
     "bofa-savings-legacy-single-account-synthetic-sample.pdf": "gen-bofa-savings-legacy-single-account-sample.py",
     "citi-costco-synthetic-sample.pdf": "gen-citi-costco-sample.py",
     "citi-annual-synthetic-sample.pdf": "gen-citi-costco-sample.py",
+    "etrade-at-work-investments-synthetic-202608.pdf": "gen-etrade-at-work-investments-sample.py",
 }
 
 

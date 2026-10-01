@@ -44,7 +44,7 @@ DIAGNOSTIC_FIELDS = {
 DIAGNOSTIC_SIGNALS = core.DIAGNOSTIC_SIGNALS
 DIAGNOSTIC_COUNTS = core.DIAGNOSTIC_COUNTS
 DIAGNOSTIC_TERMS = core.DIAGNOSTIC_TERMS
-PARSER_REVISION = 2
+PARSER_REVISION = 3
 
 _MONTH_NAMES = (
     "January", "February", "March", "April", "May", "June",
@@ -57,6 +57,10 @@ _AT_WORK_PERIOD_RE = re.compile(
     rf"-\s*(?P<end_month>{_MONTHS})\s*(?P<end_day>\d{{1,2}}),\s*(?P<end_year>\d{{4}})",
     re.I,
 )
+_AT_WORK_NUMERIC_PERIOD_RE = re.compile(
+    r"\((?P<start_month>\d{1,2})/(?P<start_day>\d{1,2})/(?P<start_year>\d{2,4})\s*"
+    r"-\s*(?P<end_month>\d{1,2})/(?P<end_day>\d{1,2})/(?P<end_year>\d{2,4})\)"
+)
 _AT_WORK_ACCOUNT_RE = re.compile(
     r"^(?:Account Summary|Account Detail)\s+(?P<account>\d[\d-]{4,})\b",
     re.I | re.M,
@@ -64,6 +68,31 @@ _AT_WORK_ACCOUNT_RE = re.compile(
 _MONEY = r"(?:\$?\(\s*[\d,]+\.\d{2}\s*\)|\(\s*\$?[\d,]+\.\d{2}\s*\)|-?\$?-?[\d,]+\.\d{2})"
 _DOLLAR_MONEY_RE = re.compile(r"\$\(?\s*[\d,]+\.\d{2}\s*\)?")
 _ZERO_CELL = {"--", "—", "-"}
+_REDACTED_TOKEN_RE = re.compile(r"^(?:x+|\$?\(?0[0,]*0*\.00\)?)$", re.I)
+_POSITION_RE = re.compile(
+    rf"^(?P<description>.+?)\s+(?P<symbol>[A-Z][A-Z0-9.\-]{{0,9}})\s+"
+    rf"(?P<quantity>[\d,]+(?:\.\d+)?)\s+(?P<price>{_MONEY})\s+"
+    rf"(?P<cost>{_MONEY})\s+(?P<market>{_MONEY})(?:\s+.*)?$"
+)
+_ACTIVITY_RE = re.compile(
+    rf"^(?P<activity_date>\d{{1,2}}/\d{{1,2}})(?:\s+(?P<settlement_date>\d{{1,2}}/\d{{1,2}}))?\s+"
+    rf"(?P<body>.+?)\s+(?P<amount>{_MONEY})$"
+)
+_ACTIVITY_TYPES = (
+    ("Qualified Dividend", "dividend"),
+    ("Dividend", "dividend"),
+    ("Interest", "interest"),
+    ("Capital Gain", "capital_gain"),
+    ("Buy", "buy"),
+    ("Sell", "sell"),
+    ("Purchase", "buy"),
+    ("Sale", "sell"),
+    ("Electronic Transfer", "internal_transfer"),
+    ("Journal", "internal_transfer"),
+    ("Deposit", "deposit"),
+    ("Withdrawal", "withdrawal"),
+    ("Fee", "fee"),
+)
 
 _AT_WORK_SUMMARY_LABELS = {
     "beginning": ("TOTAL BEGINNING VALUE", "totalBeginningValue"),
@@ -82,7 +111,6 @@ def _looks_like_at_work(text: str) -> bool:
         "client statement" in lower
         and "e*trade is a business of morgan stanley" in lower
         and "morgan stanley smith barney llc" in lower
-        and _AT_WORK_PERIOD_RE.search(text) is not None
     )
 
 
@@ -92,12 +120,11 @@ def _detect_at_work(head_text: str) -> tuple[bool, str]:
         "CLIENT STATEMENT": "client statement" in lower,
         "E*TRADE/Morgan Stanley legal marker": "e*trade is a business of morgan stanley" in lower,
         "Morgan Stanley Smith Barney LLC": "morgan stanley smith barney llc" in lower,
-        "For the Period": _AT_WORK_PERIOD_RE.search(head_text) is not None,
     }
     missing = [label for label, found in required.items() if not found]
     if missing:
         return False, "missing E*TRADE at Work marker(s): " + ", ".join(missing)
-    return True, "found E*TRADE Morgan Stanley at Work Client Statement and statement period"
+    return True, "found E*TRADE Morgan Stanley at Work Client Statement"
 
 
 def detect(head_text: str) -> tuple[bool, str]:
@@ -121,32 +148,37 @@ def _amount(raw: str) -> float:
 
 def _period(text: str) -> tuple[date, date]:
     match = _AT_WORK_PERIOD_RE.search(text)
-    if not match:
-        raise parser_common.ParserDiagnosticError(
-            "E*TRADE at Work statement period not found",
-            code="PARSER_STATEMENT_DATE_INVALID",
-            stage="metadata",
-            missing_fields=("statementPeriod",),
+    if match:
+        end_year = int(match.group("end_year"))
+        start_month = _MONTH_NUMBERS[match.group("start_month").casefold()]
+        end_month = _MONTH_NUMBERS[match.group("end_month").casefold()]
+        start_year = end_year - 1 if start_month > end_month else end_year
+        return (
+            date(start_year, start_month, int(match.group("start_day"))),
+            date(end_year, end_month, int(match.group("end_day"))),
         )
-    end_year = int(match.group("end_year"))
-    start_month = _MONTH_NUMBERS[match.group("start_month").casefold()]
-    end_month = _MONTH_NUMBERS[match.group("end_month").casefold()]
-    start_year = end_year - 1 if start_month > end_month else end_year
-    return (
-        date(start_year, start_month, int(match.group("start_day"))),
-        date(end_year, end_month, int(match.group("end_day"))),
+    numeric = _AT_WORK_NUMERIC_PERIOD_RE.search(text)
+    if numeric:
+        year = lambda raw: 2000 + int(raw) if len(raw) == 2 else int(raw)
+        return (
+            date(year(numeric.group("start_year")), int(numeric.group("start_month")), int(numeric.group("start_day"))),
+            date(year(numeric.group("end_year")), int(numeric.group("end_month")), int(numeric.group("end_day"))),
+        )
+    raise parser_common.ParserDiagnosticError(
+        "E*TRADE at Work statement period not found",
+        code="PARSER_STATEMENT_DATE_INVALID",
+        stage="metadata",
+        missing_fields=("statementPeriod",),
     )
 
 
 def _metadata(text: str) -> tuple[str, str, str]:
     match = _AT_WORK_ACCOUNT_RE.search(text)
     if not match:
-        raise parser_common.ParserDiagnosticError(
-            "E*TRADE at Work account identifier not found",
-            code="PARSER_REQUIRED_DATA_MISSING",
-            stage="metadata",
-            missing_fields=("accountIdentifier",),
-        )
+        # Redacted statements commonly mask this entire field. The row schema
+        # permits an unknown account; retain the statement data and surface
+        # field presence through diagnostics instead of inventing an ID.
+        return "", "Brokerage", ""
     provider_id = match.group("account")
     return common.last4_digits(provider_id), "Brokerage", provider_id
 
@@ -213,9 +245,9 @@ def _holdings(
             continue
         if not active:
             continue
-        if line.startswith("MORGAN STANLEY BANK N.A."):
+        if line.startswith(("MORGAN STANLEY BANK N.A.", "MORGAN STANLEY PRIVATE BANK NA")):
             match = _DOLLAR_MONEY_RE.search(line)
-            if match:
+            if match and not _REDACTED_TOKEN_RE.match(match.group().replace(" ", "")):
                 rows.append(
                     {
                         "symbol": "CASH",
@@ -231,10 +263,33 @@ def _holdings(
                     }
                 )
             continue
+        position = _POSITION_RE.match(line)
+        if position and not any(
+            "x" in position.group(name).casefold()
+            for name in ("quantity", "price", "cost", "market")
+        ):
+            rows.append({
+                "symbol": position.group("symbol"),
+                "description": position.group("description").strip(),
+                "quantity": float(position.group("quantity").replace(",", "")),
+                "price": _amount(position.group("price")),
+                "cost_basis_total": _amount(position.group("cost")),
+                "current_value": _amount(position.group("market")),
+                "type": "Security",
+                "currency_code": "USD",
+                "price_as_of": statement_date,
+                "account": account,
+                "accountType": account_type,
+                "provider_account_id": provider_id,
+            })
+            continue
         if line.startswith("TOTAL VALUE"):
             matches = _DOLLAR_MONEY_RE.findall(line)
             if matches:
-                printed_total = _amount(matches[-1])
+                # Full holdings totals print Total Cost, Market Value,
+                # Gain/(Loss), and sometimes Estimated Annual Income. Market
+                # Value is the second money cell; cash-only layouts have one.
+                printed_total = _amount(matches[1] if len(matches) >= 2 else matches[0])
                 break
 
     if printed_total is None:
@@ -260,6 +315,68 @@ def _holdings(
     return rows, printed_total
 
 
+def _activity_date(raw: str, period_start: date, period_end: date) -> str:
+    month, day = (int(value) for value in raw.split("/"))
+    year = period_end.year
+    if period_start.year != period_end.year and month >= period_start.month:
+        year = period_start.year
+    parsed = date(year, month, day)
+    if parsed < period_start or parsed > period_end:
+        raise ValueError("E*TRADE activity date falls outside statement period")
+    return parsed.isoformat()
+
+
+def _transactions(
+    lines: list[str], account: str, account_type: str, provider_id: str,
+    period_start: date, period_end: date,
+) -> list[dict]:
+    """Parse the primary cash-flow activity table.
+
+    The later MMF/Bank Deposit Program table is the cash-side reflection of
+    these events and is deliberately not emitted again.
+    """
+    active = False
+    rows: list[dict] = []
+    for line in lines:
+        if line == "CASH FLOW ACTIVITY BY DATE":
+            active = True
+            continue
+        if not active:
+            continue
+        if line.startswith(("NET CREDITS/(DEBITS)", "MONEY MARKET FUND (MMF)")):
+            break
+        match = _ACTIVITY_RE.match(line)
+        if not match:
+            continue
+        body = match.group("body").strip()
+        classified = next(
+            ((label, txn_type) for label, txn_type in _ACTIVITY_TYPES if body.casefold().startswith(label.casefold())),
+            None,
+        )
+        if not classified:
+            raise parser_common.ParserDiagnosticError(
+                "unclassified E*TRADE activity row",
+                code="PARSER_UNCLASSIFIED_ROW",
+                stage="activity",
+            )
+        action, txn_type = classified
+        description = body[len(action):].strip() or action
+        amount_raw = match.group("amount")
+        if _REDACTED_TOKEN_RE.match(amount_raw.replace(" ", "")):
+            continue
+        rows.append({
+            "date": _activity_date(match.group("activity_date"), period_start, period_end),
+            "description": description,
+            "amount": _amount(amount_raw),
+            "action": action,
+            "transaction_type": txn_type,
+            "account": account,
+            "accountType": account_type,
+            "provider_account_id": provider_id,
+        })
+    return rows
+
+
 def _parse_at_work(pages_text: list[str]) -> dict:
     text = "\n".join(pages_text)
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -277,25 +394,35 @@ def _parse_at_work(pages_text: list[str]) -> dict:
         },
     )
     try:
-        _, end = _period(text)
+        start, end = _period(text)
         account, account_type, provider_id = _metadata(text)
         summary = _summary(lines)
         holdings, holdings_total = _holdings(
             lines, account, account_type, provider_id, end.isoformat()
         )
+        transactions = _transactions(
+            lines, account, account_type, provider_id, start, end
+        )
         context["counts"]["holdingsParsed"] = len(holdings)
-        context["counts"]["transactionsParsed"] = 0
+        context["counts"]["transactionsParsed"] = len(transactions)
         core._require_close(
             "E*TRADE at Work ending holdings",
             holdings_total,
             summary["ending"],
             "holdings",
         )
-        if not core._close(summary["net_transfers"], 0.0):
+        flow_total = sum(
+            row["amount"] for row in transactions
+            if row.get("transaction_type") in parser_common.FLOW_TRANSACTION_TYPES
+        )
+        if not core._close(summary["net_transfers"], flow_total):
             raise parser_common.ParserDiagnosticError(
-                "E*TRADE at Work statement has nonzero period activity without itemized rows",
-                code="PARSER_ACTIVITY_ROWS_NOT_FOUND",
-                stage="activity",
+                "E*TRADE at Work net transfers do not reconcile itemized flow activity",
+                code=(
+                    "PARSER_ACTIVITY_ROWS_NOT_FOUND"
+                    if not transactions else "PARSER_RECONCILIATION_FAILED"
+                ),
+                stage="activity" if not transactions else "validation",
             )
     except ValueError as error:
         raise parser_common.enrich_parser_error(error, **context) from error
@@ -305,7 +432,7 @@ def _parse_at_work(pages_text: list[str]) -> dict:
         "statementDate": end.isoformat(),
         "tables": {
             "brokerage_holdings": holdings,
-            "brokerage_transactions": [],
+            "brokerage_transactions": transactions,
         },
     }
 

@@ -72,7 +72,50 @@ def test_at_work_nonzero_activity_fails_instead_of_silently_dropping_rows() -> N
         {"pageCount": 1, "textPageCount": 1},
         pages[0],
     )
-    assert diagnostic["parserRevision"] == 2
+    assert diagnostic["parserRevision"] == 3
     assert diagnostic["signals"]["credits"] is True
     assert diagnostic["counts"]["holdingsParsed"] == 1
     assert "$" not in json.dumps(diagnostic)
+
+
+def test_at_work_investments_and_activity(run_statement) -> None:
+    stmt = run_statement(
+        "etrade-at-work-investments-synthetic-202608.pdf",
+        "--expected-parser",
+        "etrade_brokerage.py",
+    )
+    assert stmt.institution == "E*TRADE from Morgan Stanley"
+    assert stmt.statement_date == "2026-08-31"
+    assert len(stmt.brokerage_holdings) == 3
+    assert len(stmt.brokerage_transactions) == 3
+
+    holdings = {row["symbol"]: row for row in stmt.brokerage_holdings}
+    assert approx(holdings["CASH"]["current_value"], 1000.00)
+    assert approx(holdings["ACM"]["quantity"], 10.0)
+    assert approx(holdings["ACM"]["current_value"], 5000.00)
+    assert approx(holdings["SIF"]["cost_basis_total"], 4500.00)
+    assert all(row["account"] == "2468" for row in stmt.brokerage_holdings)
+
+    transactions = {row["action"]: row for row in stmt.brokerage_transactions}
+    assert transactions["Deposit"]["transaction_type"] == "deposit"
+    assert approx(transactions["Deposit"]["amount"], 500.00)
+    assert transactions["Withdrawal"]["transaction_type"] == "withdrawal"
+    assert approx(transactions["Withdrawal"]["amount"], -200.00)
+    assert transactions["Qualified Dividend"]["transaction_type"] == "dividend"
+    assert approx(transactions["Qualified Dividend"]["amount"], 100.00)
+
+
+def test_at_work_redacted_cover_still_detects_and_numeric_period_parses() -> None:
+    head = "\n".join([
+        "CLIENT STATEMENT For the Period xxxxxx x xxxx xxxx",
+        "Morgan Stanley Smith Barney LLC. Member SIPC.",
+        "E*TRADE is a business of Morgan Stanley.",
+    ])
+    matched, reason = etrade_brokerage.detect(head)
+    assert matched, reason
+
+    start, end = etrade_brokerage._period(
+        "This Period (8/1/26-8/31/26) (1/1/26-8/31/26)"
+    )
+    assert start.isoformat() == "2026-08-01"
+    assert end.isoformat() == "2026-08-31"
