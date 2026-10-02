@@ -3,7 +3,7 @@
 << /Type /Catalog /Pages 2 0 R >>
 endobj
 2 0 obj
-<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
 endobj
 3 0 obj
 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
@@ -12,7 +12,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 2367 >>
+<< /Length 7512 >>
 stream
 BT /F1 7 Tf 1 0 0 1 24 742.00 Tm (MERIDIAN CARD) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 732.00 Tm () Tj ET
@@ -21,37 +21,100 @@ BT /F1 7 Tf 1 0 0 1 24 712.00 Tm (Account Number: ****8814) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 702.00 Tm (Billing Period: 03/01/2026 - 03/31/2026) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 692.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 682.00 Tm (ACCOUNT SUMMARY) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 672.00 Tm (Previous Balance                                 1,319.32) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 662.00 Tm (Payments and Credits                            -1,319.32) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 652.00 Tm (Purchases                                        1,318.17) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 642.00 Tm (New Balance                                      1,318.17) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 672.00 Tm (Previous Balance                                 2,591.55) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 662.00 Tm (Payments and Credits                            -2,591.55) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 652.00 Tm (Purchases                                        2,600.27) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 642.00 Tm (New Balance                                      2,600.27) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 632.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 622.00 Tm (TRANSACTIONS) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 612.00 Tm (Date     Description                                        Amount) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 602.00 Tm (03/02    WHOLE EARTH MARKET                                     197.41) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 592.00 Tm (03/04    NORTHSIDE FUEL                                          63.75) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 582.00 Tm (03/06    STREAMLINE MEDIA                                        17.99) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 572.00 Tm (03/08    BRIGHTWATER UTILITIES                                  212.44) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 562.00 Tm (03/11    MERIDIAN CARD AUTOPAY - THANK YOU                   -1,319.32) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 552.00 Tm (03/13    WHOLE EARTH MARKET                                     178.65) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 542.00 Tm (03/15    ALDERTON PHARMACY                                       29.40) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 532.00 Tm (03/18    CITY TRANSIT AUTHORITY                                  96.00) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 522.00 Tm (03/20    THE COPPER KETTLE                                      102.10) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 512.00 Tm (03/23    WHOLE EARTH MARKET                                     221.37) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 502.00 Tm (03/25    NORTHSIDE FUEL                                          55.20) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 492.00 Tm (03/28    GRANVILLE HARDWARE                                     143.86) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 602.00 Tm (03/01    STARBUCKS #1204                                          8.27) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 592.00 Tm (03/02    WHOLE EARTH MARKET                                     197.41) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 582.00 Tm (03/04    COSTA COFFEE #218                                       12.12) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 572.00 Tm (03/04    NORTHSIDE FUEL                                          63.75) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 562.00 Tm (03/05    AMAZON MKTPL                                            43.59) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 552.00 Tm (03/05    PLANET FITNESS #88                                      49.00) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 542.00 Tm (03/06    AMAZON MKTPL                                            62.27) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 532.00 Tm (03/07    STARBUCKS #1204                                          6.25) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 522.00 Tm (03/08    BRIGHTWATER UTILITIES                                  212.44) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 512.00 Tm (03/09    24 HOUR FITNESS CLUB #417                               54.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 502.00 Tm (03/09    AMAZON MKTPL                                            39.66) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 492.00 Tm (03/09    COSTA COFFEE #218                                       15.33) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 482.00 Tm (03/09    DOORDASH                                                64.90) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 472.00 Tm (03/10    7-ELEVEN #33104                                         16.48) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 462.00 Tm (03/10    ANCHOR BREWING CO                                       45.37) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 452.00 Tm (03/10    CHIPOTLE 2650                                           17.03) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 442.00 Tm (03/10    DOORDASH                                                39.63) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 432.00 Tm (03/10    STARBUCKS #1204                                          7.26) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 422.00 Tm (03/11    7-ELEVEN #33104                                         10.69) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 412.00 Tm (03/11    DOORDASH                                                37.37) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 402.00 Tm (03/11    LYFT RIDE                                               13.10) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 392.00 Tm (03/11    MERIDIAN CARD AUTOPAY - THANK YOU                   -2,591.55) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 382.00 Tm (03/12    CHIPOTLE 2650                                           22.64) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 372.00 Tm (03/13    STARBUCKS #1204                                          8.56) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 362.00 Tm (03/13    STEAM GAMES                                              6.18) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 352.00 Tm (03/13    UBER EATS                                               28.00) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 342.00 Tm (03/13    WHOLE EARTH MARKET                                     178.65) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 332.00 Tm (03/14    STARBUCKS #1204                                          6.48) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 322.00 Tm (03/15    ALDERTON PHARMACY                                       29.40) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 312.00 Tm (03/15    COSTA COFFEE #218                                        6.58) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 302.00 Tm (03/15    STARBUCKS #1204                                          7.20) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 292.00 Tm (03/17    NETFLIX.COM                                             24.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 282.00 Tm (03/17    SPOTIFY USA                                             16.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 272.00 Tm (03/18    CITY TRANSIT AUTHORITY                                  96.00) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 262.00 Tm (03/18    UBER EATS                                               55.93) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 252.00 Tm (03/19    HULU                                                    18.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 242.00 Tm (03/19    MCDONALD'S F21543                                       11.95) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 232.00 Tm (03/20    HBO MAX                                                 16.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 222.00 Tm (03/20    THE COPPER KETTLE                                      102.10) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 212.00 Tm (03/21    DISNEY+ SUBSCRIPTION                                    15.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 202.00 Tm (03/21    STARBUCKS #1204                                          9.21) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 192.00 Tm (03/22    STARBUCKS #1204                                          6.80) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 182.00 Tm (03/22    UBER TRIP                                               14.24) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 172.00 Tm (03/23    UBER EATS                                               54.19) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 162.00 Tm (03/23    WHOLE EARTH MARKET                                     221.37) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 152.00 Tm (03/23    YOUTUBE PREMIUM                                         13.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 142.00 Tm (03/24    COSTA COFFEE #218                                       11.35) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 132.00 Tm (03/24    PARAMOUNT+ SUBSCRIPTION                                 12.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 122.00 Tm (03/24    UBER TRIP                                               36.89) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 112.00 Tm (03/25    7-ELEVEN #33104                                         11.74) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 102.00 Tm (03/25    CHIPOTLE 2650                                           17.68) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 92.00 Tm (03/25    NORTHSIDE FUEL                                          55.20) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 82.00 Tm (03/26    ANCHOR BREWING CO                                       51.47) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 72.00 Tm (03/26    MCDONALD'S F21543                                       16.75) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 62.00 Tm (03/26    MICROSOFT 365 FAMILY                                    12.99) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 52.00 Tm (03/27    LYFT RIDE                                               19.09) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 42.00 Tm (03/28    GRANVILLE HARDWARE                                     143.86) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 32.00 Tm (03/28    MCDONALD'S F21543                                       11.39) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 784 >>
+stream
+BT /F1 7 Tf 1 0 0 1 24 742.00 Tm (03/29    AMAZON MKTPL                                            68.77) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 732.00 Tm (03/29    COSTA COFFEE #218                                       15.97) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 722.00 Tm (03/29    STARBUCKS #1204                                          9.33) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 712.00 Tm (03/29    STARBUCKS #1204                                          8.91) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 702.00 Tm (03/30    7-ELEVEN #33104                                         14.83) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 692.00 Tm (03/30    STEAM GAMES                                              9.06) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 682.00 Tm (03/31    AMAZON MKTPL                                            81.67) Tj ET
 endstream
 endobj
 xref
-0 6
+0 8
 0000000000 65535 f 
 0000000009 00000 n 
 0000000058 00000 n 
-0000000115 00000 n 
-0000000185 00000 n 
-0000000311 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000007880 00000 n 
+0000008006 00000 n 
 trailer
-<< /Size 6 /Root 1 0 R >>
+<< /Size 8 /Root 1 0 R >>
 startxref
-2729
+8840
 %%EOF

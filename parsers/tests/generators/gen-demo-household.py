@@ -30,6 +30,7 @@ Regenerate with:  python3 tests/generators/gen-demo-household.py
 
 import json
 import os
+import random
 from datetime import date
 
 # Page geometry, matching the other generators.
@@ -96,11 +97,19 @@ ACCOUNTS = [
         "BND":  (2400.0, 170_000.00),
         "SGOV": (920.0, 92_000.00),
     }),
-    ("3390", "Rollover IRA", {
+    # The pre-tax 401(k) the household still pays into from every paycheck:
+    # its monthly purchases are funded by contributions, not by the bank.
+    ("3390", "401(k)", {
         "VTI":  (900.0, 180_000.00),
         "SCHD": (3200.0, 79_000.00),
     }),
 ]
+
+# Accounts funded from payroll rather than from the bank: what their
+# purchases need arrives as the employee's pre-tax deferral and the
+# employer's match, on payday.
+PAYROLL_FUNDED = {"3390"}
+EMPLOYEE_SHARE = 0.75
 
 MONTHS = [
     (date(2025, 10, 1), date(2025, 10, 31)),
@@ -114,7 +123,9 @@ MONTHS = [
 # Each month's price as a fraction of the final price, so the series has a
 # real shape (a dip in December, a strong March) rather than a straight
 # line - a portfolio that only ever goes up teaches nothing about return.
-PRICE_PATH = [0.9280, 0.9475, 0.9310, 0.9612, 0.9788, 1.0000]
+# Together with the dividends it is about 8.5% a year, money-weighted: the
+# return check() asserts, and the one a planner would start from.
+PRICE_PATH = [0.9775, 0.9830, 0.9718, 0.9855, 0.9912, 1.0000]
 
 
 def money(x: float) -> str:
@@ -219,7 +230,15 @@ def activity_for(acct: str, holdings: dict, i: int):
     # the excess to its current account is also just what happens.
     need = round(-(spent + income), 2)
     flow = 0.0
-    if need > 0.005:
+    if need > 0.005 and acct in PAYROLL_FUNDED:
+        flow = need
+        employee = round(need * EMPLOYEE_SHARE, 2)
+        payday = start.replace(day=min(15, end.day))
+        rows.insert(0, (payday, "Contribution", "", "EMPLOYER MATCHING CONTRIBUTION",
+                        None, None, round(need - employee, 2)))
+        rows.insert(0, (payday, "Contribution", "", "EMPLOYEE PRE-TAX CONTRIBUTION",
+                        None, None, employee))
+    elif need > 0.005:
         flow = need
         rows.insert(0, (start.replace(day=min(3, end.day)), "Deposit", "",
                         "ACH DEPOSIT - TRANSFER FROM BANK", None, None, flow))
@@ -284,36 +303,121 @@ def brokerage_lines(i: int) -> list:
 
 # --- the credit card ---------------------------------------------------
 #
-# Spending is ordinary and unremarkable on purpose. Its job is to make the
-# spending recipes answerable at all, not to be a second puzzle: a demo
-# with a mystery in every account teaches nothing, because the user cannot
-# tell which findings are the point.
+# The everyday spending is ordinary and unremarkable on purpose: a grocer,
+# fuel, the pharmacy, a cafe. Around it are the two things a household
+# most often pays for without noticing, because finding them is the first
+# thing the spending analyses are asked to do:
+#
+#   - subscriptions that overlap: five video services, two that both
+#     include music, two gyms. Netflix's price rises in March, and
+#     Paramount+ starts in March, when a free trial nobody cancelled runs
+#     out;
+#   - habits that add up: coffee most days, two delivery apps, fast food,
+#     the corner store, short rides, a bar tab, many small online orders.
+#
+# Real merchant names, like the ticker symbols above, are public facts,
+# and the categorizer's own rules place them, so every reader of the demo
+# sees the same subscriptions and habits. The household, the card and
+# every amount are invented. Each statement reconciles: the autopay pays
+# the previous statement's balance.
 CARD_ACCOUNT = "8814"
 CARD_MONTHS = [(date(2026, 2, 1), date(2026, 2, 28)), (date(2026, 3, 1), date(2026, 3, 31))]
-CARD_TXNS = [
+CARD_OPENING_BALANCE = 1284.55
+
+CARD_EVERYDAY = [
     [("02/03", "WHOLE EARTH MARKET", 184.22), ("02/05", "NORTHSIDE FUEL", 61.40),
      ("02/07", "ALDERTON PHARMACY", 42.15), ("02/09", "THE COPPER KETTLE", 88.60),
-     ("02/12", "MERIDIAN CARD AUTOPAY - THANK YOU", -1284.55),
      ("02/14", "WHOLE EARTH MARKET", 210.08), ("02/17", "CITY TRANSIT AUTHORITY", 96.00),
-     ("02/19", "HARBOUR POINT DENTAL", 320.00), ("02/21", "STREAMLINE MEDIA", 17.99),
-     ("02/24", "WHOLE EARTH MARKET", 165.73), ("02/26", "NORTHSIDE FUEL", 58.90),
-     ("02/27", "THE COPPER KETTLE", 74.25)],
+     ("02/19", "HARBOUR POINT DENTAL", 320.00), ("02/24", "WHOLE EARTH MARKET", 165.73),
+     ("02/26", "NORTHSIDE FUEL", 58.90), ("02/27", "THE COPPER KETTLE", 74.25)],
     [("03/02", "WHOLE EARTH MARKET", 197.41), ("03/04", "NORTHSIDE FUEL", 63.75),
-     ("03/06", "STREAMLINE MEDIA", 17.99), ("03/08", "BRIGHTWATER UTILITIES", 212.44),
-     ("03/11", "MERIDIAN CARD AUTOPAY - THANK YOU", -1319.32),
-     ("03/13", "WHOLE EARTH MARKET", 178.65), ("03/15", "ALDERTON PHARMACY", 29.40),
-     ("03/18", "CITY TRANSIT AUTHORITY", 96.00), ("03/20", "THE COPPER KETTLE", 102.10),
-     ("03/23", "WHOLE EARTH MARKET", 221.37), ("03/25", "NORTHSIDE FUEL", 55.20),
-     ("03/28", "GRANVILLE HARDWARE", 143.86)],
+     ("03/08", "BRIGHTWATER UTILITIES", 212.44), ("03/13", "WHOLE EARTH MARKET", 178.65),
+     ("03/15", "ALDERTON PHARMACY", 29.40), ("03/18", "CITY TRANSIT AUTHORITY", 96.00),
+     ("03/20", "THE COPPER KETTLE", 102.10), ("03/23", "WHOLE EARTH MARKET", 221.37),
+     ("03/25", "NORTHSIDE FUEL", 55.20), ("03/28", "GRANVILLE HARDWARE", 143.86)],
 ]
+
+# Day of the month, description, price; a second price takes over from
+# the month index given, and a first month delays the start.
+CARD_SUBSCRIPTIONS = [
+    (5, "PLANET FITNESS #88", 49.00),
+    (9, "24 HOUR FITNESS CLUB #417", 54.99),
+    (17, "NETFLIX.COM", 22.99),
+    (17, "SPOTIFY USA", 16.99),
+    (19, "HULU", 18.99),
+    (20, "HBO MAX", 16.99),
+    (21, "DISNEY+ SUBSCRIPTION", 15.99),
+    (23, "YOUTUBE PREMIUM", 13.99),
+    (24, "PARAMOUNT+ SUBSCRIPTION", 12.99),
+    (26, "MICROSOFT 365 FAMILY", 12.99),
+]
+CARD_PRICE_RISES = {"NETFLIX.COM": (1, 24.99)}
+CARD_STARTS = {"PARAMOUNT+ SUBSCRIPTION": 1}
+
+# Merchant, visits a month, lowest and highest charge.
+CARD_HABITS = [
+    ("STARBUCKS #1204", 10, 5.50, 9.50),
+    ("COSTA COFFEE #218", 5, 5.00, 16.00),
+    ("DOORDASH", 3, 28.00, 75.00),
+    ("UBER EATS", 3, 28.00, 58.00),
+    ("CHIPOTLE 2650", 3, 13.00, 26.00),
+    ("MCDONALD'S F21543", 3, 8.00, 17.00),
+    ("7-ELEVEN #33104", 4, 6.00, 22.00),
+    ("UBER TRIP", 2, 14.00, 45.00),
+    ("LYFT RIDE", 2, 11.00, 32.00),
+    ("ANCHOR BREWING CO", 2, 32.00, 85.00),
+    ("AMAZON MKTPL", 5, 12.00, 110.00),
+    ("STEAM GAMES", 2, 5.00, 25.00),
+]
+
+AUTOPAY = "MERIDIAN CARD AUTOPAY - THANK YOU"
+
+
+def card_charges(i: int) -> list:
+    """Month i's purchases, in the statement's own signs (charges positive)."""
+    start, end = CARD_MONTHS[i]
+    rows = list(CARD_EVERYDAY[i])
+    for day, desc, price in CARD_SUBSCRIPTIONS:
+        if CARD_STARTS.get(desc, 0) > i:
+            continue
+        rise = CARD_PRICE_RISES.get(desc)
+        if rise and i >= rise[0]:
+            price = rise[1]
+        rows.append((f"{start.month:02d}/{min(day, end.day):02d}", desc, price))
+    # A stream of its own per merchant and month, so changing one habit
+    # leaves every other one's charges exactly as they were.
+    for desc, visits, low, high in CARD_HABITS:
+        rng = random.Random(f"{desc}|{start.isoformat()}")
+        for _ in range(visits):
+            day = rng.randint(1, end.day)
+            amount = round(low + rng.random() * (high - low), 2)
+            rows.append((f"{start.month:02d}/{day:02d}", desc, amount))
+    return rows
+
+
+def card_previous_balance(i: int) -> float:
+    """The balance month i opens with. Each autopay clears the balance the
+    month opened with, so what carries over is last month's charges."""
+    if i == 0:
+        return CARD_OPENING_BALANCE
+    return round(sum(a for _, _, a in card_charges(i - 1)), 2)
+
+
+def card_transactions(i: int) -> list:
+    """Month i's rows as the statement prints them: the purchases and the
+    autopay of the previous balance, in date order."""
+    start, _end = CARD_MONTHS[i]
+    autopay_day = 12 if i == 0 else 11
+    rows = card_charges(i) + [(f"{start.month:02d}/{autopay_day:02d}", AUTOPAY, -card_previous_balance(i))]
+    return sorted(rows, key=lambda r: (r[0], r[1]))
 
 
 def card_lines(i: int) -> list:
     start, end = CARD_MONTHS[i]
-    txns = CARD_TXNS[i]
+    txns = card_transactions(i)
     purchases = round(sum(a for _, _, a in txns if a > 0), 2)
     credits = round(sum(a for _, _, a in txns if a < 0), 2)
-    previous = 1284.55 if i == 0 else 1319.32
+    previous = card_previous_balance(i)
     new_balance = round(previous + purchases + credits, 2)
     lines = [
         "MERIDIAN CARD",
@@ -346,7 +450,15 @@ def escape(s: str) -> bytes:
     return s.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)").encode("latin-1", "replace")
 
 
+# Lines on one page: from 50pt below the top to about 30pt above the
+# bottom, which keeps every brokerage statement on a single page.
+LINES_PER_PAGE = 72
+
+
 def build_pdf(lines, path):
+    """One page per LINES_PER_PAGE lines. A document that fits on one page
+    comes out byte for byte as it did before pages were supported."""
+    pages = [lines[k:k + LINES_PER_PAGE] for k in range(0, len(lines), LINES_PER_PAGE)] or [[]]
     out = bytearray(b"%PDF-1.4\n")
     offsets = {}
 
@@ -356,25 +468,26 @@ def build_pdf(lines, path):
         out.extend(body)
         out.extend(b"\nendobj\n")
 
+    kids = " ".join(f"{4 + 2 * k} 0 R" for k in range(len(pages)))
     add_obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
-    add_obj(2, b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
+    add_obj(2, f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode())
     add_obj(3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    add_obj(
-        4,
-        (
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] "
-            "/Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>" % (PAGE_W, PAGE_H)
-        ).encode(),
-    )
-
-    stream = bytearray()
-    y = PAGE_H - 50
-    for line in lines:
-        stream.extend(f"BT /F1 {FONT_SIZE} Tf 1 0 0 1 {X} {y:.2f} Tm (".encode())
-        stream.extend(escape(line))
-        stream.extend(b") Tj ET\n")
-        y -= LINE_H
-    add_obj(5, b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + bytes(stream) + b"endstream")
+    for k, page in enumerate(pages):
+        add_obj(
+            4 + 2 * k,
+            (
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] "
+                "/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % (PAGE_W, PAGE_H, 5 + 2 * k)
+            ).encode(),
+        )
+        stream = bytearray()
+        y = PAGE_H - 50
+        for line in page:
+            stream.extend(f"BT /F1 {FONT_SIZE} Tf 1 0 0 1 {X} {y:.2f} Tm (".encode())
+            stream.extend(escape(line))
+            stream.extend(b") Tj ET\n")
+            y -= LINE_H
+        add_obj(5 + 2 * k, b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + bytes(stream) + b"endstream")
 
     xref_pos = len(out)
     count = max(offsets) + 1
@@ -386,8 +499,6 @@ def build_pdf(lines, path):
 
     with open(path, "wb") as f:
         f.write(bytes(out))
-
-
 
 
 def main():
@@ -407,6 +518,42 @@ def main():
     check()
     for n in written:
         print("wrote", os.path.join(OUT, n))
+
+
+def money_weighted_return() -> float:
+    """The portfolio's annual money-weighted return from the first
+    month-end to the last: the rate at which the opening value plus every
+    deposit and contribution, less every withdrawal, grows into the closing
+    value. Dividends stay inside and are not flows."""
+    first, last = MONTHS[0][1], MONTHS[-1][1]
+
+    def value(i):
+        return sum(quantities_at(a, h, i)[s] * price_at(s, i) for a, _t, h in ACCOUNTS for s in h)
+
+    flows = []
+    for acct, _type, holdings in ACCOUNTS:
+        for i in range(1, len(MONTHS)):
+            rows, _ = activity_for(acct, holdings, i)
+            flows += [(d, amount) for d, kind, _s, _d, _n, _p, amount in rows
+                      if kind in ("Deposit", "Contribution", "Withdrawal")]
+
+    def years(d):
+        return (d - first).days / 365.25
+
+    def surplus(rate):
+        grown = value(0) * (1 + rate) ** years(last)
+        for d, amount in flows:
+            grown += amount * (1 + rate) ** (years(last) - years(d))
+        return grown - value(len(MONTHS) - 1)
+
+    lo, hi = -0.5, 1.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if surplus(mid) > 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
 
 
 def check():
@@ -468,7 +615,13 @@ def check():
             for sym, n in quantities_at(acct, holdings, i).items():
                 assert n > 0, f"{acct}/{sym} is {n} in month {i}"
 
-    print(f"checks passed: IRMAA headroom {headroom:,.0f}, "
+    # 6. It returns what a well-run portfolio of these funds plausibly
+    #    does - not a bull market's 20%, which would make every plan look
+    #    safe, nor so little that every plan fails.
+    rate = money_weighted_return()
+    assert 0.08 <= rate <= 0.09, f"the portfolio returns {rate:.2%} a year, want 8-9%"
+
+    print(f"checks passed: return {rate:.2%} a year, IRMAA headroom {headroom:,.0f}, "
           f"NVDA {share:.1%} of taxable with {gain:,.0f} gain, "
           f"portfolio {sum(sum(quantities_at(a, h, final)[s] * price_at(s, final) for s in h) for a, _t, h in ACCOUNTS):,.0f}")
 

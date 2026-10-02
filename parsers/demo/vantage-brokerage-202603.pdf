@@ -12,7 +12,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
 endobj
 5 0 obj
-<< /Length 7434 >>
+<< /Length 7586 >>
 stream
 BT /F1 7 Tf 1 0 0 1 24 742.00 Tm (VANTAGE BROKERAGE SERVICES) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 732.00 Tm (Member FINRA/SIPC) Tj ET
@@ -65,7 +65,7 @@ BT /F1 7 Tf 1 0 0 1 24 272.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 262.00 Tm (----------------------------------------------------------------------------------------------------) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 252.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 242.00 Tm (Account Number: VB-3390) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 232.00 Tm (Account Type: Rollover IRA) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 232.00 Tm (Account Type: 401\(k\)) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 222.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 212.00 Tm (HOLDINGS) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 202.00 Tm (Symbol   Description                              Quantity         Price    Market Value      Cost Basis   Est Annual Income) Tj ET
@@ -76,14 +76,15 @@ BT /F1 7 Tf 1 0 0 1 24 162.00 Tm (Total Account Value                           
 BT /F1 7 Tf 1 0 0 1 24 152.00 Tm () Tj ET
 BT /F1 7 Tf 1 0 0 1 24 142.00 Tm (ACTIVITY) Tj ET
 BT /F1 7 Tf 1 0 0 1 24 132.00 Tm (Date         Type        Symbol   Description                                  Quantity      Price           Amount) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 122.00 Tm (03/03/2026   Deposit              ACH DEPOSIT - TRANSFER FROM BANK                                       1,298.79) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 112.00 Tm (03/12/2026   Buy         SCHD     SCHWAB US DIVIDEND EQUITY ETF                30.000      27.35          -820.50) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 102.00 Tm (03/12/2026   Buy         VTI      VANGUARD TOTAL STOCK MARKET ETF               7.000     302.10        -2,114.70) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 92.00 Tm (03/22/2026   Dividend    SCHD     SCHWAB US DIVIDEND EQUITY ETF                                            813.94) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 82.00 Tm (03/22/2026   Dividend    VTI      VANGUARD TOTAL STOCK MARKET ETF                                          822.47) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 72.00 Tm () Tj ET
-BT /F1 7 Tf 1 0 0 1 24 62.00 Tm (----------------------------------------------------------------------------------------------------) Tj ET
-BT /F1 7 Tf 1 0 0 1 24 52.00 Tm () Tj ET
+BT /F1 7 Tf 1 0 0 1 24 122.00 Tm (03/12/2026   Buy         SCHD     SCHWAB US DIVIDEND EQUITY ETF                30.000      27.35          -820.50) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 112.00 Tm (03/12/2026   Buy         VTI      VANGUARD TOTAL STOCK MARKET ETF               7.000     302.10        -2,114.70) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 102.00 Tm (03/15/2026   Contribution          EMPLOYEE PRE-TAX CONTRIBUTION                                            974.09) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 92.00 Tm (03/15/2026   Contribution          EMPLOYER MATCHING CONTRIBUTION                                           324.70) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 82.00 Tm (03/22/2026   Dividend    SCHD     SCHWAB US DIVIDEND EQUITY ETF                                            813.94) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 72.00 Tm (03/22/2026   Dividend    VTI      VANGUARD TOTAL STOCK MARKET ETF                                          822.47) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 62.00 Tm () Tj ET
+BT /F1 7 Tf 1 0 0 1 24 52.00 Tm (----------------------------------------------------------------------------------------------------) Tj ET
+BT /F1 7 Tf 1 0 0 1 24 42.00 Tm () Tj ET
 endstream
 endobj
 xref
@@ -97,5 +98,5 @@ xref
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-7796
+7948
 %%EOF

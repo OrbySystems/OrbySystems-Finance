@@ -25,6 +25,7 @@ holdings table and an activity table:
     03/12/2026 Buy VTI VANGUARD TOTAL STOCK MARKET ETF 9.000 302.10 -2,718.90
     03/22/2026 Dividend BND VANGUARD TOTAL BOND MARKET ETF 2,959.49
     03/27/2026 Withdrawal ACH WITHDRAWAL - TRANSFER TO BANK -1,518.51
+    03/15/2026 Contribution EMPLOYEE PRE-TAX CONTRIBUTION 2,201.43
 
 Every activity row sets `transaction_type` from the closed vocabulary in
 scripts/transaction_vocabulary.json rather than relying on `action` alone.
@@ -83,7 +84,7 @@ _INCOME_RE = re.compile(
 
 _CASH_RE = re.compile(
     r"^(?P<date>\d{2}/\d{2}/\d{4})\s+"
-    r"(?P<action>Deposit|Withdrawal)\s+"
+    r"(?P<action>Deposit|Withdrawal|Contribution)\s+"
     r"(?P<desc>.+?)\s+"
     r"(?P<amount>" + _NUM + r")\s*$")
 
@@ -95,6 +96,9 @@ _TRANSACTION_TYPES = {
     "Interest": "interest",
     "Deposit": "deposit",
     "Withdrawal": "withdrawal",
+    # A 401(k)'s payroll deferral and employer match: money arriving from
+    # outside the portfolio, like a deposit, but not from the bank.
+    "Contribution": "contribution",
 }
 
 _MONTHS = {m: i + 1 for i, m in enumerate(
