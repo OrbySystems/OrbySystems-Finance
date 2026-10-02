@@ -80,7 +80,7 @@ def test_brokerage_statement_parses(path):
     # missing rather than come out wrong - which is correct behaviour and
     # a broken demo.
     accounts = {(h["account"], h["accountType"]) for h in holdings}
-    assert accounts == {("2041", "Individual"), ("6683", "Roth IRA"), ("3390", "Rollover IRA")}, accounts
+    assert accounts == {("2041", "Individual"), ("6683", "Roth IRA"), ("3390", "401(k)")}, accounts
 
     assert len(holdings) == 8, f"expected 8 positions, got {len(holdings)}"
     for h in holdings:
@@ -109,9 +109,27 @@ def test_every_activity_row_is_classified(path):
     for row in run(path)["tables"]["brokerage_transactions"]:
         assert row.get("transaction_type"), f"{row['action']!r} row carries no transaction_type"
         assert row["transaction_type"] in parser_common.TRANSACTION_TYPES, row["transaction_type"]
-        if row["action"] in ("Deposit", "Withdrawal"):
+        if row["action"] in ("Deposit", "Withdrawal", "Contribution"):
             assert parser_common.classifies_as_flow(row), \
                 f"a {row['action']} is not recognised as money moving: {row}"
+
+
+def test_the_401k_is_paid_for_from_payroll():
+    """The pre-tax 401(k) is funded by the household's own contributions,
+    on payday, rather than by transfers from the bank - which is what makes
+    it a 401(k) to every analysis that separates contributions from growth."""
+    contributions = 0
+    for path in BROKERAGE:
+        for row in run(path)["tables"]["brokerage_transactions"]:
+            if row["account"] != "3390":
+                continue
+            assert row["action"] not in ("Deposit", "Withdrawal"), \
+                f"the 401(k) moved money to or from the bank: {row}"
+            if row["action"] == "Contribution":
+                assert row["transaction_type"] == "contribution" and row["amount"] > 0, row
+                contributions += 1
+    assert contributions == 2 * len(BROKERAGE), \
+        f"{contributions} contributions, want the employee's and the employer's each month"
 
 
 def test_the_ledger_balances():
@@ -133,7 +151,8 @@ def test_card_statement_parses_with_orbysystems_signs(path):
     obj = run(path)
     assert obj["institution"] == "Meridian Card"
     txns = obj["tables"]["cash_transactions"]
-    assert len(txns) == 12, f"expected 12 transactions, got {len(txns)}"
+    # The everyday spending, ten subscriptions, the habits, and an autopay.
+    assert len(txns) >= 60, f"expected a full month of card activity, got {len(txns)}"
 
     charges = [t for t in txns if "AUTOPAY" not in t["description"]]
     payments = [t for t in txns if "AUTOPAY" in t["description"]]
@@ -147,6 +166,32 @@ def test_card_statement_parses_with_orbysystems_signs(path):
     for t in txns:
         assert t["accountType"] == "Credit Card"
         assert t["account"] == "8814"
+
+
+def test_the_card_shows_overlapping_subscriptions_and_habits():
+    """The first things the spending analyses are asked to find: services
+    that overlap (five video services, two gyms), one whose price went up,
+    one that started when a free trial ran out - and small habits that add
+    up. A demo without them has nothing to show on those screens."""
+    feb, mar = (run(path)["tables"]["cash_transactions"] for path in CARDS)
+
+    def charges(txns, name):
+        return [-t["amount"] for t in txns if t["description"] == name]
+
+    video = ["NETFLIX.COM", "HULU", "HBO MAX", "DISNEY+ SUBSCRIPTION", "PARAMOUNT+ SUBSCRIPTION"]
+    assert all(charges(mar, name) for name in video), "a video service is missing in March"
+    assert charges(mar, "PLANET FITNESS #88") and charges(mar, "24 HOUR FITNESS CLUB #417"), \
+        "the two gyms are not both there"
+    assert charges(feb, "NETFLIX.COM") == [22.99] and charges(mar, "NETFLIX.COM") == [24.99], \
+        "Netflix's price does not rise in March"
+    assert not charges(feb, "PARAMOUNT+ SUBSCRIPTION") and charges(mar, "PARAMOUNT+ SUBSCRIPTION"), \
+        "Paramount+ should start in March"
+
+    both = feb + mar
+    for name, at_least in [("STARBUCKS #1204", 20), ("COSTA COFFEE #218", 10), ("DOORDASH", 6),
+                           ("UBER EATS", 6), ("7-ELEVEN #33104", 8), ("AMAZON MKTPL", 10)]:
+        visits = len(charges(both, name))
+        assert visits >= at_least, f"{name}: {visits} visits, want at least {at_least}"
 
 
 def test_a_card_statement_that_does_not_reconcile_is_rejected():
