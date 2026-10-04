@@ -15,7 +15,7 @@ from institutions import common
 
 
 KIND = parser_common.KIND_BROKERAGE
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_UNTESTED
 INSTITUTION = "Morgan Stanley Global Stock Plan Services"
 PARSER_REVISION = 1
 

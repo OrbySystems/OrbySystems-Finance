@@ -14,10 +14,13 @@ checking/savings already are, not by how the card issuer's own balance
 moves.
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 _CLOSING_DATE_RE = re.compile(r"Statement Closing Date\s+(\d{2})/(\d{2})/(\d{4})")
 _ACCOUNT_RE = re.compile(r"Account\s*#\s*([\dXx*\s]{4,25})", re.IGNORECASE)

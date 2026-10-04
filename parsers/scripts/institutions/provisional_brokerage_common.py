@@ -23,7 +23,6 @@ from . import diagnostic_helpers
 
 
 KIND = parser_common.KIND_BROKERAGE
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
 PARSER_REVISION = 1
 DIAGNOSTIC_SIGNALS = diagnostic_helpers.DIAGNOSTIC_SIGNALS
 DIAGNOSTIC_COUNTS = diagnostic_helpers.DIAGNOSTIC_COUNTS

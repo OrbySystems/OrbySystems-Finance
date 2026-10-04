@@ -23,36 +23,39 @@ CLAUDE.md                  how to add a parser
 ## Investment statement coverage
 
 The table below tracks the initial U.S. investment-institution coverage set.
-“Broad” means the parser has coverage for multiple known statement variants.
-“Partial” means only the named statement family is covered. “Provisional” means
-the parser and synthetic regression statement are present, but the parser still
-needs validation against a safely redacted production statement before it
-should be considered production-hardened.
+Status is the parser's support tier (its `SUPPORT_TIER` line; see CONTRACT.md):
+**verified** means at least one clean import of a real statement,
+**provisional** means built from a real statement's layout and awaiting that
+import, and **untested** means built from public samples or invented data
+only. When an untested parser cannot read a statement, OrbySystems offers the
+user its Statement Scrambler, so a scrambled copy can be sent to rebuild the
+parser from a real layout. Tiers as of 2026-10-03; orby-core's
+README_addparser.md has every parser's tier, generated from its Go catalog.
 
 | Institution / statement family | Status | Current scope |
 |---|---|---|
-| Fidelity Investments / NetBenefits | **Broad** | Brokerage PDF, combined household and year-end variants, NetBenefits 401(k) PDF (including omitted zero-value rows, signed zero-net Exchange rows, and both dividend reconciliation conventions), and positions CSV |
-| Charles Schwab | **Partial + provisional** | Retirement Plan Services quarterly 401(k) PDF validated against a production statement; retail brokerage PDF remains provisional |
-| Vanguard | **Broad** | Voyager and Personal Investor brokerage PDFs plus Custom Activity CSV/XLSX |
-| Citi credit cards | **Provisional** | Parses Costco Anywhere Visa monthly statements and Citi annual account summaries; other Citi card layouts are recognized for diagnostic-driven expansion |
-| Merrill / Merrill Edge | **Partial + provisional** | Existing CMA coverage plus provisional Wealth Management coverage; Trust remains unsupported |
-| J.P. Morgan Wealth Management / Self-Directed Investing | **Provisional** | Investment statement family, distinct from Chase banking and credit-card statements |
-| Morgan Stanley Global Stock Plan Services | **Provisional** | Participant share purchase quarterly statement with releases, sales, and proceeds disbursements; validated against one 2021 statement |
-| Morgan Stanley Wealth Management | **Provisional** | Wealth Management client statement, distinct from E*TRADE |
+| Fidelity Investments / NetBenefits | **Verified** | Brokerage PDF, combined household and year-end variants, NetBenefits 401(k) PDF (including omitted zero-value rows, signed zero-net Exchange rows, and both dividend reconciliation conventions), and positions CSV |
+| Charles Schwab | **Verified** | Retirement Plan Services quarterly 401(k) PDF validated against a production statement; retail brokerage PDF remains provisional |
+| Vanguard | **Provisional** | Voyager and Personal Investor brokerage PDFs plus Custom Activity CSV/XLSX |
+| Citi credit cards | **Untested** | Parses Costco Anywhere Visa monthly statements and Citi annual account summaries; other Citi card layouts are recognized for diagnostic-driven expansion |
+| Merrill / Merrill Edge | **Untested** | Existing CMA coverage plus provisional Wealth Management coverage; Trust remains unsupported |
+| J.P. Morgan Wealth Management / Self-Directed Investing | **Untested** | Investment statement family, distinct from Chase banking and credit-card statements |
+| Morgan Stanley Global Stock Plan Services | **Untested** | Participant share purchase quarterly statement with releases, sales, and proceeds disbursements; validated against one 2021 statement |
+| Morgan Stanley Wealth Management | **Untested** | Wealth Management client statement, distinct from E*TRADE |
 | E*TRADE from Morgan Stanley | **Provisional** | Morgan Stanley at Work client statements with cash, stock and ETF holdings plus itemized cash-flow activity; additional security and activity variants remain provisional |
-| Wells Fargo Advisors / WellsTrade | **Provisional** | Investment statement family, distinct from Wells Fargo checking statements |
-| Edward Jones | **Provisional** | Retail brokerage statement |
-| Raymond James | **Provisional** | Comprehensive statement; Executive Overview remains unsupported |
-| Ameriprise | **Provisional** | Consolidated brokerage statement |
-| UBS Financial Services | **Provisional** | Resource Management Account statement |
-| LPL Financial | **Provisional** | Quarterly investment statement |
-| BNY Pershing / NetXInvestor | **Provisional** | Core clearing statement; introducing-firm skins need validation |
-| Interactive Brokers | **Provisional** | Activity Statement PDF; Flex Query exports remain separate future work |
-| Robinhood | **Provisional** | Brokerage statement; retirement and activity CSV variants need validation |
-| Empower Retirement / Empower Brokerage | **Provisional** | Brokerage/IRA statement; employer-plan variants need examples |
-| T. Rowe Price Brokerage / Funds | **Provisional** | Pershing-cleared brokerage statement; direct-fund statements remain separate |
-| Principal retirement / investments | **Provisional** | Retirement-plan statement; plan-specific variants need examples |
-| Apex Clearing statement family | **Provisional** | Core clearing statement; introducing-broker skins need validation |
+| Wells Fargo Advisors / WellsTrade | **Untested** | Investment statement family, distinct from Wells Fargo checking statements |
+| Edward Jones | **Untested** | Retail brokerage statement |
+| Raymond James | **Untested** | Comprehensive statement; Executive Overview remains unsupported |
+| Ameriprise | **Untested** | Consolidated brokerage statement |
+| UBS Financial Services | **Untested** | Resource Management Account statement |
+| LPL Financial | **Untested** | Quarterly investment statement |
+| BNY Pershing / NetXInvestor | **Untested** | Core clearing statement; introducing-firm skins need validation |
+| Interactive Brokers | **Untested** | Activity Statement PDF; Flex Query exports remain separate future work |
+| Robinhood | **Untested** | Brokerage statement; retirement and activity CSV variants need validation |
+| Empower Retirement / Empower Brokerage | **Untested** | Brokerage/IRA statement; employer-plan variants need examples |
+| T. Rowe Price Brokerage / Funds | **Untested** | Pershing-cleared brokerage statement; direct-fund statements remain separate |
+| Principal retirement / investments | **Untested** | Retirement-plan statement; plan-specific variants need examples |
+| Apex Clearing statement family | **Untested** | Core clearing statement; introducing-broker skins need validation |
 
 Coverage summary as of 2026-09-18: all 20 target families have an initial
 parser, Fidelity and Vanguard have broad coverage, Schwab and Merrill have
@@ -62,10 +65,11 @@ first real statement for each layout becomes available.
 
 ### Privacy-safe failure reports
 
-Provisional parser modules declare `SUPPORT_TIER = "provisional"`. When a
-parser recognizes a statement but cannot parse its layout, the dispatcher
-returns a stable error code and a structured diagnostic instead of exposing
-the parser's raw exception. OrbySystems' Add Source dialog lets the user inspect the
+Every parser module declares its support tier. When a parser recognizes a
+statement but cannot parse its layout, the dispatcher returns a stable error
+code and a structured diagnostic, carrying that tier, instead of exposing the
+parser's raw exception. An untested parser's message also points the user to
+a scrambled copy. OrbySystems' Add Source dialog lets the user inspect the
 complete diagnostic before copying it or opening a GitHub issue; nothing is
 sent automatically.
 

@@ -25,7 +25,7 @@ from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
 INSTITUTION = "Edward Jones"
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_UNTESTED
 DIAGNOSTIC_MARKERS = {
     "account_summary": "Value Summary",
     "holdings": "Asset Details",

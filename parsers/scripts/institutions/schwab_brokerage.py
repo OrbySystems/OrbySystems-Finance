@@ -25,7 +25,7 @@ from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
 INSTITUTION = "Charles Schwab"
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 DIAGNOSTIC_MARKERS = {
     "account_summary": "Account Summary",
     "holdings": "Positions",

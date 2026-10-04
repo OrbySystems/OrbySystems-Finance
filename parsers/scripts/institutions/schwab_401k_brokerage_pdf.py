@@ -23,7 +23,7 @@ from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
 INSTITUTION = "Charles Schwab"
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PARTIAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 PARSER_REVISION = 1
 
 # OpenText's text layer frequently removes spaces between adjacent words even

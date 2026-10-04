@@ -30,7 +30,7 @@ import parser_common
 from institutions import common
 
 KIND = "brokerage"
-SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
 INSTITUTION = "Vanguard"
 
 # The full header of the Custom Activity Report. Detection requires the

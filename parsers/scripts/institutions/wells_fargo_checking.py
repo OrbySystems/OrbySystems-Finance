@@ -30,10 +30,13 @@ The finished result is checked against the statement's own printed
 emitting transactions whose signs don't reconcile.
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
 
 # Tolerance for comparing statement amounts, in dollars. Everything is
 # printed to the cent, so anything above half a cent is a real mismatch.

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import parser_common
+
 from . import provisional_brokerage_common as core
 
 
 KIND = core.KIND
-SUPPORT_TIER = core.SUPPORT_TIER
+SUPPORT_TIER = parser_common.SUPPORT_TIER_UNTESTED
 PROFILE_KEY = "ameriprise"
 INSTITUTION = core.PROFILES[PROFILE_KEY]["institution"]
 DIAGNOSTIC_MARKERS = core.diagnostic_markers(PROFILE_KEY)

@@ -21,10 +21,13 @@ parser_common's IO contract (account/accountType are per-transaction
 keys, never top-level - see Transaction in pkg/ingest/statement.go).
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 # Matched separately from _DATE_RANGE_RE (rather than one combined regex
 # requiring the date range to immediately follow this label with only

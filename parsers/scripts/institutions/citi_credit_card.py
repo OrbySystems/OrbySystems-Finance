@@ -18,7 +18,7 @@ import parser_common
 from institutions import common
 
 
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_UNTESTED
 INSTITUTION = "Citi"
 PARSER_REVISION = 2
 DIAGNOSTIC_MARKERS = {
@@ -94,7 +94,7 @@ def detect(head_text: str) -> tuple[bool, str]:
         )
     )
     if citi_brand and card_markers >= 2:
-        return True, "matched provisional Citi credit-card statement family"
+        return True, "matched untested Citi credit-card statement family"
     return False, "Citi monthly-statement and annual-summary markers not found"
 
 

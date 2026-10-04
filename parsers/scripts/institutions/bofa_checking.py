@@ -5,12 +5,15 @@ additions" / "Withdrawals and other subtractions" / "Service fees" /
 "Checks" sections, and transaction dates as MM/DD/YY.
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 import pdfplumber
 
 from . import check_ocr, common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 _SECTIONS = {
     "deposits and other additions": "credit",
