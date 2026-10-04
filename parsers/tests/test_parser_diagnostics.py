@@ -39,7 +39,7 @@ def test_unknown_format_diagnostic_excludes_detection_reasons() -> None:
         "pdf", {"pageCount": 3, "textPageCount": 2}
     )
     assert diagnostic == {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "reference": "PARSER-NOT-FOUND",
         "code": "PARSER_NOT_FOUND",
         "parserId": "",

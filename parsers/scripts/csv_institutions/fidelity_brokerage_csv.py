@@ -22,10 +22,11 @@ money-market position is marked by a "**" suffix on its own symbol
 """
 
 from institutions import common
-from parser_common import KIND_BROKERAGE, SUPPORT_TIER_BROAD
+import parser_common
+from parser_common import KIND_BROKERAGE
 
 KIND = KIND_BROKERAGE
-SUPPORT_TIER = SUPPORT_TIER_BROAD
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 _INSTITUTION = "Fidelity Investments"
 

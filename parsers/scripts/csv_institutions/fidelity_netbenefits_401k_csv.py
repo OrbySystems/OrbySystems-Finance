@@ -77,11 +77,14 @@ money out negative, e.g. an Exchange Out row is negative) - no
 negation step needed, same as Vanguard's Custom Activity Report.
 """
 
+import parser_common
 import csv
 import html
 import re
 
 from institutions import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 KIND = "brokerage"
 

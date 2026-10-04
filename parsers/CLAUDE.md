@@ -36,9 +36,11 @@ common`.
 
 ## Workflow
 
-1. Get a **sample file**. For a PDF, redact a real statement (OrbySystems'
-   Tools → PDF Redactor) or invent a synthetic one the way
-   `tests/generators/gen-*.py` do. For a CSV/`.xlsx`, export it and strip
+1. Get a **sample file**. For a PDF, scramble a real statement
+   (OrbySystems' Tools → Statement Scrambler: the layout is kept and every
+   value is faked) or invent a synthetic one the way
+   `tests/generators/gen-*.py` do. In a scrambled sample, anchor `detect()`
+   only on words the scrambler keeps; see orby-core's README_addparser.md. For a CSV/`.xlsx`, export it and strip
    account-identifying cells — and note which institution it's from, the
    file usually won't say (CSV `detect()` fingerprints the column-header
    shape, not body text).
@@ -48,14 +50,21 @@ common`.
    against *that* — pdfplumber's whitespace/line breaks don't match the
    visual layout.
 3. Add `scripts/<dir>/<name>.py` with `detect()` / `parse()`. The
-   dispatcher picks it up automatically — no registration step.
+   dispatcher picks it up automatically — no registration step. Declare
+   its support tier on a line of its own:
+   `SUPPORT_TIER = parser_common.SUPPORT_TIER_<VERIFIED|PROVISIONAL|UNTESTED|DEMO>`
+   (`tests/test_support_tiers.py` requires it). A parser built from a
+   scrambled or redacted real statement starts provisional. It is verified
+   after one clean import of a real statement. orby-core's
+   `pkg/parsercatalog` must list it with the same tier.
 4. `python scripts/bank_statement.py <file>` — iterate until institution,
    account, accountType, statementDate and every row (date, description,
    correctly-signed amount, running balance) are right.
-5. Add a regression test under `tests/`. Put the fixture in
-   `tests/fixtures/`; if it's synthetic, add a
-   `tests/generators/gen-<name>.py` producing it from invented data so it
-   can be committed. Use `conftest.py`'s `run_statement` fixture.
+5. Add a regression test under `tests/`. Every new parser comes with a
+   demo statement: a synthetic fixture in the same layout in
+   `tests/fixtures/`, produced by a `tests/generators/gen-<name>.py` from
+   invented data so it can be committed. Use `conftest.py`'s
+   `run_statement` fixture. Update the coverage table in `README.md`.
 6. From this directory, run `make test`; from the repository root, run
    `make test-parsers` or `make test`.
 

@@ -35,9 +35,12 @@ net of it, and a contribution nothing recognises is reported as investment
 gain. A parser written today has no excuse for leaving that to convention.
 """
 
+import parser_common
 import re
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 
 KIND = "brokerage"
 

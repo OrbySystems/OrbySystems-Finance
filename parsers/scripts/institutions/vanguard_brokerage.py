@@ -51,7 +51,7 @@ from . import common
 from . import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
-SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
 PARSER_REVISION = 1
 DIAGNOSTIC_MARKERS = {
     "holdings": "Balances and holdings for Vanguard Brokerage Account",

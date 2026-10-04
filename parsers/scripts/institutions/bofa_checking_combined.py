@@ -27,12 +27,15 @@ Number XXXX" with no colon, and a "Daily Balance Summary" per-account
 footer) - see that module's docstring.
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 import pdfplumber
 
 from . import bofa_checking, check_ocr, common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 # Must be tried before bofa_checking: bofa_checking's generic "Your ...
 # for DATE to DATE" header regex also matches this modern combined

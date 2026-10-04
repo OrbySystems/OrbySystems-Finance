@@ -151,7 +151,7 @@ def test_citi_annual_rejects_changed_complete_category_subtotal(dump_pages):
         citi_credit_card.parse(broken, "unused.pdf")
 
 
-def test_citi_generic_card_layout_is_claimed_for_provisional_diagnostics():
+def test_citi_generic_card_layout_is_claimed_for_untested_diagnostics():
     text = """Citi Card
 Payment Due Date 10/15/2026
 Minimum Payment Due $25.00
@@ -160,7 +160,7 @@ New Balance $500.00
 """
     matched, reason = citi_credit_card.detect(text)
     assert matched is True
-    assert "provisional Citi credit-card" in reason
+    assert "untested Citi credit-card" in reason
 
     with pytest.raises(parser_common.ParserDiagnosticError) as exc:
         citi_credit_card.parse([text], "unused.pdf")
@@ -174,9 +174,11 @@ New Balance $500.00
         {"pageCount": 1, "textPageCount": 1},
         text,
     )
-    assert "provisional Citi" in message
+    # Untested: the failure offers a scrambled copy rather than questions.
+    assert "not been confirmed on real statements" in message
+    assert "scrambled copy" in message
     assert diagnostic["parserId"] == "citi_credit_card"
-    assert diagnostic["supportTier"] == "provisional"
+    assert diagnostic["supportTier"] == "untested"
     assert diagnostic["missingFields"] == ["billingPeriod"]
     assert diagnostic["fieldPresence"]["paymentDueDate"] is True
     assert diagnostic["fieldPresence"]["minimumPaymentDue"] is True

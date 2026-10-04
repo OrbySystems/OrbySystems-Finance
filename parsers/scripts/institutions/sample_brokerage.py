@@ -27,9 +27,12 @@ test PDF text-extraction quirks the way the bank parsers' fixtures do):
     06/15/2026 | Dividend Received VOO | 12.45 | 512.45
 """
 
+import parser_common
 import re
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 
 KIND = "brokerage"
 

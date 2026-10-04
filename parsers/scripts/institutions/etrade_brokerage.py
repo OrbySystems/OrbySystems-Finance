@@ -20,7 +20,7 @@ from . import provisional_brokerage_common as core
 
 
 KIND = core.KIND
-SUPPORT_TIER = core.SUPPORT_TIER
+SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
 PROFILE_KEY = "etrade"
 INSTITUTION = core.PROFILES[PROFILE_KEY]["institution"]
 DIAGNOSTIC_MARKERS = {

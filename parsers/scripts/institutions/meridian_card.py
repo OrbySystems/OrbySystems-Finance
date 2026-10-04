@@ -36,9 +36,12 @@ itself makes possible - and negated as the last step, once the arithmetic
 has already proved the rows were read correctly.
 """
 
+import parser_common
 import re
 
 from . import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 
 _HEADER_MARKER = "MERIDIAN CARD"
 _INSTITUTION = "Meridian Card"

@@ -36,7 +36,7 @@ import re
 import parser_common
 
 KIND = parser_common.KIND_BROKERAGE
-SUPPORT_TIER = parser_common.SUPPORT_TIER_BROAD
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 PARSER_REVISION = 6
 
 _INSTITUTION = "Fidelity NetBenefits"
