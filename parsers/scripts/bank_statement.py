@@ -299,7 +299,7 @@ def main() -> None:
                 print(json.dumps({
                     "detected": False,
                     "reason": reason,
-                    "diagnostic": parser_common.unsupported_format_diagnostic("pdf", input_stats),
+                    "diagnostic": parser_common.unsupported_format_diagnostic("pdf", input_stats, head_text),
                 }))
                 return
 

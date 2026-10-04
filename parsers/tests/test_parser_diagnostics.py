@@ -52,6 +52,25 @@ def test_unknown_format_diagnostic_excludes_detection_reasons() -> None:
     }
 
 
+def test_unknown_format_diagnostic_says_whether_it_reads_like_a_statement() -> None:
+    statement = [
+        "LAKESHORE CREDIT UNION\nStatement Period 01/01/2026 - 01/31/2026\n"
+        "Beginning Balance $1,234.56\n01/05 PAYMENT TO MOSBY 20.00 1,214.56\n"
+        "01/09 DEPOSIT 100.00 1,314.56\nEnding Balance $1,314.56"
+    ]
+    diagnostic = parser_common.unsupported_format_diagnostic("pdf", {"pageCount": 1}, statement)
+    assert diagnostic["signals"]["beginningBalance"] and diagnostic["signals"]["endingBalance"]
+    assert diagnostic["counts"] == {"financialLabelRows": 4, "datedActivityRows": 2}
+    encoded = json.dumps(diagnostic)
+    for private in ("LAKESHORE", "MOSBY", "1,234.56", "Beginning Balance"):
+        assert private not in encoded
+
+    letter = ["Dear member,\nThank you for being with us since 2001.\nRegards"]
+    diagnostic = parser_common.unsupported_format_diagnostic("pdf", {"pageCount": 1}, letter)
+    assert "signals" not in diagnostic
+    assert diagnostic["counts"] == {"financialLabelRows": 0, "datedActivityRows": 0}
+
+
 def test_missing_fields_are_explicit_and_module_allowlisted() -> None:
     module = SimpleNamespace(
         __name__="institutions.test_brokerage",

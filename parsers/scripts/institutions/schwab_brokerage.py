@@ -45,7 +45,7 @@ DIAGNOSTIC_FIELDS = {
 DIAGNOSTIC_SIGNALS = diagnostic_helpers.DIAGNOSTIC_SIGNALS
 DIAGNOSTIC_COUNTS = diagnostic_helpers.DIAGNOSTIC_COUNTS
 DIAGNOSTIC_TERMS = diagnostic_helpers.DIAGNOSTIC_TERMS
-PARSER_REVISION = 1
+PARSER_REVISION = 2
 
 _MONEY = r"(?:\(?-?\$?[\d,]+\.\d{2}\)?)"
 _NUMBER = r"(?:-?[\d,]+(?:\.\d+)?)"
@@ -282,8 +282,11 @@ def _current_account_summary(lines: list[str]) -> dict[str, float]:
 def _reconcile_account_summary(values: dict[str, float]) -> None:
     beginning = _value(values, "Beginning Value")
     ending = _value(values, "Ending Value", "Ending Account Value")
+    # A component the account had no activity in can be left off the summary
+    # altogether: a real January 2026 statement printed no Transfer of
+    # Securities line. It counts as zero, and the summary still has to add up.
     components = sum(
-        _value(values, label)
+        values.get(label, 0.0)
         for label in (
             "Deposits",
             "Withdrawals",
@@ -786,6 +789,17 @@ def _positioned_transaction(
     return row
 
 
+def _is_totals_row(words: list[dict], columns: dict[str, float]) -> bool:
+    """A totals line under the table, known by its shape rather than its
+    label: it starts at the left margin with something other than a date, and
+    carries an amount. A scrambled sample replaces the "Total Transactions"
+    label, and without this the totals would join the last transaction."""
+    first = min(words, key=lambda word: float(word["x0"]))
+    if float(first["x0"]) >= columns["category"] - 5 or _DATE_WORD_RE.fullmatch(first["text"]):
+        return False
+    return any(_MONEY_RE.fullmatch(word["text"]) for word in words)
+
+
 def _parse_positioned_transactions(
     pdf_path: str, start: date, end: date, account: str, account_type: str, provider_id: str
 ) -> list[dict]:
@@ -811,6 +825,8 @@ def _parse_positioned_transactions(
                 if compact.startswith(
                     ("totaltransaction", "banksweepactivity", "moneymarketfund", "pending/openactivities")
                 ):
+                    break
+                if data_rows and _is_totals_row(words, columns):
                     break
                 data_rows.append((row_top, words))
 
