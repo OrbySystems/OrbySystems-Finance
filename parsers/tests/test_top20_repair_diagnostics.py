@@ -54,7 +54,7 @@ def _diagnostic(module, pages: list[str], pdf_path) -> dict:
     assert diagnostic["signals"]
     assert diagnostic["counts"]["financialLabelRows"] > 0
     assert diagnostic["counts"]["sectionMarkersPresent"] > 0
-    assert diagnostic["parserRevision"] == 1
+    assert diagnostic["parserRevision"] == module.PARSER_REVISION
     return diagnostic
 
 

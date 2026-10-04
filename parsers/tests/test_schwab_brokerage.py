@@ -7,6 +7,7 @@ assertions move together.
 from __future__ import annotations
 
 import json
+from datetime import date
 
 import pytest
 
@@ -147,3 +148,76 @@ def test_realized_gain_term_glued_to_amount(printed: str, amount: float, term: s
     parsed, parsed_term = schwab_brokerage._cell_realized_gain(block, (90.0, 150.0))
     assert parsed == amount
     assert parsed_term == term
+
+
+def test_summary_without_a_line_for_activity_the_account_had_none_of() -> None:
+    # A real January 2026 statement printed no Transfer of Securities line.
+    account = schwab_brokerage._current_account_summary(
+        [
+            "BeginningAccountValue $100.00 $100.00",
+            "Deposits 0.00 0.00",
+            "Withdrawals (95.00) (95.00)",
+            "DividendsandInterest 0.50 0.50",
+            "MarketAppreciation/(Depreciation) 2.00 2.00",
+            "Expenses 0.00 0.00",
+            "EndingAccountValue $7.50 $7.50",
+        ]
+    )
+    assert "Transfer of Securities (In/Out)" not in account
+    schwab_brokerage._reconcile_account_summary(account)
+
+
+def test_a_left_out_summary_line_does_not_excuse_one_that_does_not_add_up() -> None:
+    with pytest.raises(ValueError, match="Account Summary does not reconcile"):
+        schwab_brokerage._reconcile_account_summary(
+            {"Beginning Value": 100.0, "Withdrawals": -95.0, "Ending Value": 7.5}
+        )
+    with pytest.raises(ValueError, match="missing Schwab control total"):
+        schwab_brokerage._reconcile_account_summary({"Withdrawals": -95.0, "Ending Value": 5.0})
+
+
+def _word(text: str, x0: float, top: float) -> dict:
+    return {"text": text, "x0": x0, "top": top}
+
+
+def test_positioned_table_ends_at_a_totals_line_whatever_its_label(monkeypatch) -> None:
+    # A scrambled sample replaces "Total Transactions" with a made-up word.
+    # The totals line is still a totals line: left margin, no date, amounts.
+    rows = [
+        (100.0, [_word(t, x, 100.0) for t, x in (
+            ("Date", 40), ("Category", 80), ("Action", 130), ("Symbol/", 180), ("Description", 230),
+            ("Quantity", 330), ("Price/Rate", 380), ("Charges/", 430), ("Amount", 480), ("Realized", 530),
+        )]),
+        (120.0, [_word(t, x, 120.0) for t, x in (
+            ("01/13", 40), ("Sale", 80), ("ABCD", 180), ("SYNTHETIC", 230), ("(10.0000)", 330),
+            ("12.3400", 380), ("1.00", 430), ("123.40", 480), ("20.00,(ST)", 530),
+        )]),
+        (135.0, [_word(t, x, 135.0) for t, x in (("01/29", 40), ("Interest", 80), ("BANK", 230), ("0.50", 480))]),
+        (150.0, [_word(t, x, 150.0) for t, x in (("Zimuripacukoneger", 40), ("($1.00)", 430), ("$20.00", 530))]),
+    ]
+
+    class _PDF:
+        pages = [object()]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(schwab_brokerage.pdfplumber, "open", lambda _path: _PDF())
+    monkeypatch.setattr(schwab_brokerage, "_word_rows", lambda _page: rows)
+
+    def parse() -> list[dict]:
+        return schwab_brokerage._parse_positioned_transactions(
+            "statement.pdf", date(2026, 1, 1), date(2026, 1, 31), "1234", "Brokerage", "1234-5678"
+        )
+
+    with monkeypatch.context() as m:
+        m.setattr(schwab_brokerage, "_is_totals_row", lambda *_: False)
+        assert parse()[1].get("realized_gain") == 20.0  # what the check prevents
+
+    sale, interest = parse()
+    assert sale["transaction_type"] == "sell" and sale["realized_gain"] == 20.0
+    assert interest["transaction_type"] == "interest" and interest["amount"] == 0.5
+    assert "realized_gain" not in interest

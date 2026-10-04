@@ -21,6 +21,11 @@ invented data only) or `demo` (an invented institution). The dispatcher
 reports it with every failure, and OrbySystems decides from it what to
 offer the user. A parser that declares none is treated as untested.
 
+A bundled parser may also declare `PARSER_REVISION`, an integer from 1
+raised whenever the parser changes. A failure's diagnostic reports it as
+`parserRevision`, so a report says which revision ran. A dropped-in
+parser's revision is not reported.
+
 ## `detect()`
 
 | dispatcher | signature |
@@ -51,6 +56,7 @@ Result — **exactly** these keys:
 | `statementDate` | `str` | `""` or `YYYY-MM-DD` |
 | `transactions` | `list[dict]` | may be empty |
 | `needsVisionOcr` | `bool` | optional, default `False`; PDF only — check images could be OCR'd but no `vision` was supplied |
+| `checks` | `list[dict]` | optional — the statement's own arithmetic; see "Checks" below |
 
 There is **no** top-level `account` / `accountType` — one statement can
 cover several accounts, so they live per transaction.
@@ -86,7 +92,8 @@ def parse(pages_text: list[str], pdf_path: str) -> dict   # no vision / needsVis
 ```
 
 Result — **exactly** `institution` (`str`), `statementDate` (`str`),
-`tables` (`dict[str, list[dict]]`). `tables` keys must be a subset of:
+`tables` (`dict[str, list[dict]]`), and optionally `checks` (see "Checks"
+below). `tables` keys must be a subset of:
 
 - **`cash_transactions`** — identical row shape to a `KIND_BANK`
   `transactions[]` row.
@@ -96,7 +103,11 @@ Result — **exactly** `institution` (`str`), `statementDate` (`str`),
   `security_id_type`, `quantity`, `price`, `commission_and_fees`,
   `realized_gain`, `realized_gain_term`, `related_security_id`,
   `currency_code`, `transaction_time`, `status`, `reference`,
-  `cancel_reference`, `provider_account_id`, `institution`.
+  `cancel_reference`, `provider_account_id`, `institution`,
+  `amount_missing`. `amount_missing` (`bool`) marks a row whose statement
+  printed no cash value — a dash rather than `0.00`: set `amount` to `0.0`
+  and `amount_missing` to `true`, and OrbySystems flags the row for the
+  user to value.
 - **`brokerage_holdings`** — required: `symbol`, `account`,
   `accountType`. Optional: `description`, `quantity`, `price`,
   `current_value`, `cost_basis_total`, `average_cost_basis`,
@@ -274,5 +285,9 @@ negated convention.
 ## Shared helpers (`scripts/institutions/common.py`)
 
 `parse_amount`, `last4_digits`, `apply_running_balance`,
-`negate_amounts_and_balances`. Import from a `csv_institutions/` module
+`negate_amounts_and_balances`; `tag_account`, which fills in `account` and
+`accountType` on every row that has none (the usual single-account
+statement); and `classify_account_type`, which turns an account title or
+product name into the label OrbySystems uses (`Checking`, `Roth IRA`,
+`HSA`, …), or a default you pass. Import from a `csv_institutions/` module
 too with `from institutions import common`.
