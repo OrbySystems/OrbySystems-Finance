@@ -559,9 +559,28 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     return message, diagnostic
 
 
-def unsupported_format_diagnostic(input_format: str, input_stats: dict) -> dict:
-    """Privacy-safe diagnostic for a forced statement import where no
-    parser matched. Per-parser miss reasons are intentionally excluded.
+# What tells a statement no parser recognized from any other document: the
+# balances it opens and closes with, and the kinds of money it lists. With
+# them the app can offer to have a parser made, before it files the PDF as a
+# plain document. Booleans and counts only.
+_STATEMENT_SHAPE_SIGNALS = (
+    "beginningBalance",
+    "endingBalance",
+    "deposits",
+    "withdrawals",
+    "dividendsInterest",
+    "fees",
+    "holdingsTotal",
+)
+_STATEMENT_SHAPE_COUNTS = ("financialLabelRows", "datedActivityRows")
+
+
+def unsupported_format_diagnostic(input_format: str, input_stats: dict, head_text: list[str] | None = None) -> dict:
+    """Privacy-safe diagnostic for a statement import where no parser
+    matched. Per-parser miss reasons are intentionally excluded. Given the
+    pages detection read, it also says whether they read like a statement
+    (_STATEMENT_SHAPE_SIGNALS): which signals hold, and how many rows carry
+    an amount or start with a date - never a label or an amount.
     """
     diagnostic = {
         "schemaVersion": 4,
@@ -577,6 +596,14 @@ def unsupported_format_diagnostic(input_format: str, input_stats: dict) -> dict:
         value = input_stats.get(key)
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
             diagnostic[key] = value
+    if head_text:
+        from institutions import diagnostic_helpers  # imports this module
+
+        context = diagnostic_helpers.diagnostic_context(head_text)
+        signals = {name: True for name in _STATEMENT_SHAPE_SIGNALS if context["signals"].get(name)}
+        if signals:
+            diagnostic["signals"] = signals
+        diagnostic["counts"] = {name: context["counts"][name] for name in _STATEMENT_SHAPE_COUNTS}
     return diagnostic
 
 
