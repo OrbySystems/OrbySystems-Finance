@@ -13,6 +13,14 @@ with a message naming the parser and field, never silently as zeroed
 data. OrbySystems re-checks the same shape on the Go side
 (`json.Decoder.DisallowUnknownFields`).
 
+Every parser also declares its **support tier** on a line of its own,
+`SUPPORT_TIER = parser_common.SUPPORT_TIER_<TIER>`: `verified` (at least
+one clean import of a real statement), `provisional` (built from a real
+statement's layout, awaiting that import), `untested` (public samples or
+invented data only) or `demo` (an invented institution). The dispatcher
+reports it with every failure, and OrbySystems decides from it what to
+offer the user. A parser that declares none is treated as untested.
+
 ## `detect()`
 
 | dispatcher | signature |
@@ -104,8 +112,9 @@ Any of the three tables may be omitted or empty.
 A share movement with no cash behind it (merger, assignment, expiry,
 share-lending adjustment) is a `brokerage_transactions` row with
 `transaction_type = "corporate_action"`, `amount` `0.00`, the share
-change in `quantity`, and — when the statement names the security on the
-other side — its identifier in `related_security_id`.
+change in `quantity`, `subtype` `"Out"` for the security leaving or
+`"In"` for the one arriving, and — when the statement names the security
+on the other side — its identifier in `related_security_id`.
 
 ### `action` and `transaction_type` are not the same kind of field
 
@@ -148,12 +157,103 @@ What actually closes the hole is that an **unrecognised word is reported**:
   OrbySystems warns at import that those rows are not being counted as money moving.
 
 Adding a word is one line of JSON — in `flows[].actions` if it means money
-moved, in `non_flow_actions` if it does not. Setting `transaction_type` is
-better, because then the question never arises.
+moved, in `non_flow_actions` if it does not (and under `non_flow_classes`
+if any figure should count it). Setting `transaction_type` is better,
+because then the question never arises.
+
+### What OrbySystems reads besides money movement
+
+**Set `transaction_type` on every row, not only on flows.** OrbySystems
+resolves each row to one `transaction_types` value: the row's own
+`transaction_type`, else the class its `action` is listed under
+(`flows[]` or `non_flow_classes` in the vocabulary), else nothing. Every
+figure reads that resolved class, never the `action` word:
+
+| figure | reads |
+|---|---|
+| income by security, the income view | `dividend`, `interest` |
+| tax lots | `buy` (a reinvestment is a `buy`), `sell` |
+| performance charges (`v_period_return`) | `fee` (margin interest is a `fee`) |
+| contributions and withdrawals | the flow classes above |
+
+So "Qualified Dividend" with `transaction_type: "dividend"` is a dividend.
+An unclassified "Qualified Dividend" is in none of these figures.
+
+**Symbols.**
+- `symbol` is the ticker whenever the statement prints one for that
+  security anywhere, holdings included.
+- When it prints none, leave `symbol` empty and put the CUSIP in
+  `security_id` with `security_id_type: "CUSIP"`. OrbySystems resolves it to
+  a ticker by name where it can, and keys it by CUSIP until then. Don't
+  put a CUSIP in `symbol`.
+- An option contract's `symbol` is its OCC code: the underlying's ticker,
+  the expiry as `YYMMDD`, `C` or `P`, then the strike, e.g.
+  `AVGO260918C420`. OrbySystems recognises an option by that shape alone. A
+  contract row carrying anything else is left out of every option figure,
+  and OrbySystems warns at import.
+
+**Option expiries and assignments** are corporate actions:
+- `transaction_type: "corporate_action"`, `subtype: "Out"`, `amount` `0.00`;
+- `symbol` is the contract's OCC code;
+- `action` names the event. Any label containing the word *expired*,
+  *expiration* or *expiry*, or *assigned* or *assignment*, in any case,
+  will do ("Expired Out", "Option Expiration"); see
+  `corporate_action_events` in the vocabulary.
+
+The option figures use those rows to find where a contract ended.
+
+**Charges reported only in the summary.** Some statements report the
+period's charges as a summary line rather than as rows (Fidelity's
+"Transaction Costs, Fees & Charges"). Emit them as one row:
+`transaction_type: "fee"`, `action: "Fee"`, dated the statement's closing
+date. Performance books fee rows as charges, which is what makes a
+period's investment gain agree with the statement's own change in
+investment value.
+
+**Realised gains.** When the statement prints a gain or loss per
+disposal, put it in `realized_gain`, signed (a loss is negative), and set
+`realized_gain_term` to `"Short-term"` or `"Long-term"`.
 
 `bank_statement.py` normalizes a `KIND_BANK` match into the same envelope
 (`tables = {"cash_transactions": transactions}`) before printing, so
 consumers see one output shape regardless of which kind matched.
+
+## Checks: the statement's own arithmetic
+
+A statement prints figures about itself — a section's total, the opening
+and closing balance, a running balance down the rows. **Report them as
+`checks`, and do not raise when they disagree with the rows you read.**
+`checks` is an optional top-level key, for both kinds, alongside
+`transactions` or `tables`:
+
+| Check | Keys | Holds when |
+|---|---|---|
+| `sum` | `label`, `table`, `rows`, `expected` | the rows' amounts add up to `expected` |
+| `balance` | `label`, `table`, `rows`, `opening`, `closing` | `opening` + the rows' amounts = `closing` |
+| `running` | `label`, `table`, `rows`, `opening` (optional) | each row's `balance` = the previous row's (or `opening`) + its `amount` |
+| `unread` | `label`, `lines` (`[{page, line, text}]`) | there are no lines: a line inside a transaction section that looked like a row but could not be read |
+
+`table` names the output table (`cash_transactions` for a `KIND_BANK`
+parser) and `rows` index its rows. Every figure is in the output's own sign
+convention (below): whatever a credit-card parser negates, it negates in
+its checks too. `label` is the statement's own name for the section;
+it is shown to the user on their own machine and never leaves it.
+
+The dispatcher evaluates the checks against the rows (`scripts/statement_checks.py`)
+and prints `checkResults`. When every check holds, the import is clean,
+and one clean import of a real statement is what makes a provisional
+parser verified. A failed check does not fail the parse. OrbySystems holds
+the import and asks the user, using an explanation worked out from the
+numbers: a section read with its sign reversed, one row with its sign
+reversed, a row that should not count, lines that were not read, or
+nothing found. The answers come back as `--adjust`, the parse runs again
+with them, and the checks are evaluated again. `chase_credit_card.py` is
+the worked example. Older parsers that still raise on a mismatch work
+as before: the import fails with a diagnostic, and no questions are
+asked.
+
+The dispatcher also prints `parser` (`id`, `tier`, `bundled`): which
+parser read the statement and its support tier.
 
 ## Amount sign convention
 
@@ -165,10 +265,11 @@ how the issuing statement's own balance figure moves.
   purchases/charges.
 - **Positive** = richer: deposits, credit-card payments/credits.
 
-For a credit-card parser, parse and validate in the statement's own
-printed sign (charges positive, payments negative — check against
-`Previous Balance + sum == New Balance`), then negate every `amount` and
-`balance` as the final step (`common.negate_amounts_and_balances`).
+For a credit-card parser, parse in the statement's own printed sign
+(charges positive, payments negative), then negate every `amount` and
+`balance` as the final step (`common.negate_amounts_and_balances`), and
+report `Previous Balance + sum == New Balance` as a `balance` check in the
+negated convention.
 
 ## Shared helpers (`scripts/institutions/common.py`)
 

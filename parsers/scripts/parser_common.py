@@ -38,6 +38,8 @@ import os
 import pkgutil
 import re
 
+import statement_checks
+
 # --- spreadsheet header/footer detection, shared by csv_statement.py's
 # CSV *and* .xlsx paths. A real export often brackets its table with a
 # preamble ("Custom report created on: ...") and/or a trailing
@@ -96,8 +98,10 @@ def grid_header_and_rows(grid: list[list[str]]) -> tuple[list[str], list[list[st
 # can cover more than one account (e.g. a combined checking+savings
 # statement, or a multi-account CSV export), so they're only ever
 # meaningful per transaction - see _REQUIRED_TXN_KEYS below. ---
-_RESULT_KEYS = {"institution", "statementDate", "transactions", "needsVisionOcr"}
-_REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr"}
+# checks (optional, both kinds): the statement's own arithmetic, for the
+# dispatcher to evaluate - see statement_checks.py and CONTRACT.md.
+_RESULT_KEYS = {"institution", "statementDate", "transactions", "needsVisionOcr", "checks"}
+_REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks"}
 # account/accountType are required per transaction (every transaction
 # belongs to some account, even if the parser couldn't determine its
 # number/type - in which case use ""); reference is optional - the
@@ -120,19 +124,23 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 KIND_BANK = "bank"
 KIND_BROKERAGE = "brokerage"
 
-# Runtime support metadata. Parsers that have only been exercised against
-# public documentation and synthetic fixtures opt into PROVISIONAL. Existing
-# parsers default to SUPPORTED so third-party drop-ins written before this
-# metadata existed keep working unchanged.
-SUPPORT_TIER_SUPPORTED = "supported"
-SUPPORT_TIER_BROAD = "broad"
-SUPPORT_TIER_PARTIAL = "partial"
-SUPPORT_TIER_PROVISIONAL = "provisional"
+# Support tier: how far a parser's format has been confirmed on real
+# statements. It decides what OrbySystems offers when a statement does not
+# read cleanly - a verified or provisional parser's failure asks the user and
+# reports what went wrong; an untested one's offers the Statement Scrambler,
+# so a scrambled copy can be sent to build it properly. Every bundled parser
+# declares one (tests/test_support_tiers.py), and OrbySystems keeps the same
+# table in Go (orby-core pkg/parsercatalog), checked against these lines.
+# How a parser earns each tier is in orby-core's README_addparser.md.
+SUPPORT_TIER_VERIFIED = "verified"        # at least one clean import of a real statement
+SUPPORT_TIER_PROVISIONAL = "provisional"  # built from a real statement's layout, awaiting its first clean import
+SUPPORT_TIER_UNTESTED = "untested"        # built from public samples or invented data; never seen a real statement
+SUPPORT_TIER_DEMO = "demo"                # an invented institution, for the demo household and tests
 _SUPPORT_TIERS = {
-    SUPPORT_TIER_SUPPORTED,
-    SUPPORT_TIER_BROAD,
-    SUPPORT_TIER_PARTIAL,
+    SUPPORT_TIER_VERIFIED,
     SUPPORT_TIER_PROVISIONAL,
+    SUPPORT_TIER_UNTESTED,
+    SUPPORT_TIER_DEMO,
 }
 
 _DIAGNOSTIC_CODES = {
@@ -237,11 +245,12 @@ def enrich_parser_error(
 
 
 def module_support_tier(module) -> str:
-    """Return a parser's declared support tier, safely defaulting old or
-    malformed parser modules to ``supported``.
+    """Return a parser's declared support tier. A parser that declares none,
+    or an unknown one - a dropped-in parser, say - is untested: nothing says
+    its format was ever confirmed on a real statement.
     """
-    tier = getattr(module, "SUPPORT_TIER", SUPPORT_TIER_SUPPORTED)
-    return tier if tier in _SUPPORT_TIERS else SUPPORT_TIER_SUPPORTED
+    tier = getattr(module, "SUPPORT_TIER", SUPPORT_TIER_UNTESTED)
+    return tier if tier in _SUPPORT_TIERS else SUPPORT_TIER_UNTESTED
 
 
 def _safe_label(value, fallback: str, limit: int = 80) -> str:
@@ -490,7 +499,14 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     tier = module_support_tier(module)
     code, stage = _classify_parser_error(error)
     reference = f"{parser_id.replace('_', '-').upper()}-{code.removeprefix('PARSER_')}"
-    if tier == SUPPORT_TIER_PROVISIONAL:
+    if tier == SUPPORT_TIER_UNTESTED:
+        message = (
+            f"OrbySystems recognized this as {institution}, but that format has not been "
+            f"confirmed on real statements yet, and this one did not read cleanly. No data was "
+            f"imported. A scrambled copy sent to OrbySystems lets us support it. "
+            f"Error reference: {reference}."
+        )
+    elif tier == SUPPORT_TIER_PROVISIONAL:
         message = (
             f"OrbySystems recognized this as a provisional {institution} format, but this "
             f"statement layout is not covered yet. No data was imported. "
@@ -503,7 +519,7 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
             f"Error reference: {reference}."
         )
     diagnostic = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "reference": reference,
         "code": code,
         "parserId": parser_id,
@@ -548,7 +564,7 @@ def unsupported_format_diagnostic(input_format: str, input_stats: dict) -> dict:
     parser matched. Per-parser miss reasons are intentionally excluded.
     """
     diagnostic = {
-        "schemaVersion": 3,
+        "schemaVersion": 4,
         "reference": "PARSER-NOT-FOUND",
         "code": "PARSER_NOT_FOUND",
         "parserId": "",
@@ -764,6 +780,64 @@ def classifies_as_flow(row: dict) -> bool:
     return row.get("action") in FLOW_ACTIONS
 
 
+#: Issuer word -> the transaction_type it means, for a row that sets none:
+#: every flows[].actions word under its flow class, every
+#: non_flow_classes[].actions word under its class.
+ACTION_CLASSES = {
+    **{a: f["transaction_type"] for f in VOCABULARY["flows"] for a in f["actions"]},
+    **{a: c["transaction_type"] for c in VOCABULARY["non_flow_classes"] for a in c["actions"]},
+}
+
+#: Corporate-action event -> the lower-case words in an action label that name it.
+CORPORATE_ACTION_EVENTS = {e["event"]: frozenset(e["words"]) for e in VOCABULARY["corporate_action_events"]}
+
+#: An option contract as the symbol column must carry it - "AVGO260918C420"
+#: is a September 2026 $420 call on AVGO. OrbySystems recognises an option
+#: by this shape alone (pkg/ingest/securities.go's occSymbolRe).
+OCC_SYMBOL = re.compile(r"^([A-Z]{1,6})(\d{6})([CP])([\d.]+)$")
+
+# An option's expiry as statements print it: "JUL 17 26", "Jan 17, 2026",
+# "01/17/2026", "17JAN26". Mirrors flow_guard.go's optionExpiryPattern.
+_OPTION_EXPIRY = re.compile(
+    r"\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*\.? \d{1,2},? '?\d{2}(\d{2})?\b"
+    r"|\b\d{1,2}/\d{1,2}/\d{2}(\d{2})?\b"
+    r"|\b\d{1,2}(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2}\b",
+    re.IGNORECASE)
+_OPTION_RIGHT = re.compile(r"\b(CALL|PUT)S?\b", re.IGNORECASE)
+
+
+def transaction_class(row: dict) -> str:
+    """The transaction_type this brokerage_transactions row resolves to: its
+    own when it sets one from the vocabulary, else the class its action word
+    is listed under, else "". Mirrors pkg/ingest/flow.go's classExpr, which
+    every income, tax-lot, option and performance figure reads."""
+    ttype = row.get("transaction_type") or ""
+    if ttype in TRANSACTION_TYPES:
+        return ttype
+    return ACTION_CLASSES.get(row.get("action") or "", "")
+
+
+def corporate_event(row: dict) -> str:
+    """The event a corporate-action row's label names ("expired",
+    "assigned"), else "". Only a corporate_action row, or one that carries no
+    transaction_type at all, can be one. Mirrors flow.go's corporateEventExpr."""
+    if (row.get("transaction_type") or "") not in ("", "corporate_action"):
+        return ""
+    words = set(re.split(r"[^a-z]+", (row.get("action") or "").lower()))
+    for event, names in CORPORATE_ACTION_EVENTS.items():
+        if words & names:
+            return event
+    return ""
+
+
+def looks_like_option_contract(row: dict) -> bool:
+    """True when a row's description reads as an option contract - a CALL or
+    PUT with an expiry date. Such a row needs an OCC_SYMBOL in symbol, or
+    every option analysis leaves it out. Mirrors flow_guard.go's check."""
+    desc = row.get("description") or ""
+    return bool(_OPTION_RIGHT.search(desc) and _OPTION_EXPIRY.search(desc))
+
+
 def unclassified_action(row: dict) -> str:
     """The row's action if nothing in the vocabulary explains it, else "".
 
@@ -829,6 +903,8 @@ def validate_parse_result(result: dict, module_name: str) -> None:
         for key in ("reference", "institution", "account", "accountType"):
             if key in t and not isinstance(t[key], str):
                 raise ValueError(f"{module_name}.parse(): transactions[{i}][{key!r}] must be a str")
+    if "checks" in result:
+        statement_checks.validate_checks(result["checks"], {"cash_transactions": txns}, module_name)
 
 
 def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
@@ -844,7 +920,7 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
     """
     if not isinstance(result, dict):
         raise ValueError(f"{module_name}.parse() must return a dict, got {type(result).__name__}")
-    extra = set(result) - _MULTI_RESULT_KEYS
+    extra = set(result) - _MULTI_RESULT_KEYS - {"checks"}
     if extra:
         raise ValueError(f"{module_name}.parse() returned unexpected top-level key(s): {sorted(extra)}")
     missing = _MULTI_RESULT_KEYS - set(result)
@@ -910,6 +986,49 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
                     f"{sorted(TRANSACTION_TYPES)}. Add it to "
                     f"scripts/transaction_vocabulary.json if the class is genuinely new."
                 )
+    if "checks" in result:
+        statement_checks.validate_checks(result["checks"], tables, module_name)
+
+
+def finish_parse(result: dict, module, adjust: dict | None = None) -> dict:
+    """The last step of every successful parse, shared by both dispatchers,
+    on a result already validated and normalized to the tables envelope:
+
+      * applies the user's answers to the rows (adjust - see
+        statement_checks.apply_adjustments), then validates the rows again;
+      * evaluates the parser's checks against them into checkResults, which
+        decide whether the import is clean or held for the user's review;
+      * says which parser read the statement and how far its format is
+        confirmed (parser: id, tier, bundled), which decides what the user
+        is offered and lets a provisional parser's first clean import be
+        recorded.
+    """
+    checks = result.pop("checks", [])
+    if adjust:
+        statement_checks.apply_adjustments(result["tables"], checks, adjust)
+        validate_multi_table_parse_result(
+            {"institution": result["institution"], "statementDate": result["statementDate"],
+             "tables": result["tables"], "checks": checks},
+            module.__name__,
+        )
+    result["checkResults"] = statement_checks.evaluate(checks, result["tables"], result.get("statementDate", ""))
+    bundled = module.__name__.startswith(("institutions.", "csv_institutions."))
+    result["parser"] = {
+        "id": module.__name__.rsplit(".", 1)[-1],
+        "tier": module_support_tier(module),
+        "bundled": bundled,
+    }
+    return result
+
+
+def parse_adjust_flag(raw: str | None) -> dict | None:
+    """The --adjust value both dispatchers take: the user's answers to a
+    statement's failed checks, as JSON (see statement_checks)."""
+    if not raw:
+        return None
+    adjust = json.loads(raw)
+    statement_checks.validate_adjustments(adjust)
+    return adjust
 
 
 def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name: str | None = None):

@@ -15,7 +15,10 @@ brokerage-specific parser would do the same for whichever institution
 its own export shape identifies.
 """
 
+import parser_common
 from institutions import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 
 KIND = "brokerage"
 

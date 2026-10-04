@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
 
   "_doc": [
     "The classification vocabulary for brokerage_transactions rows, and the",
@@ -164,5 +164,56 @@
     "Fee",
     "Tax",
     "Core Fund Activity"
+  ],
+
+  "_non_flow_classes_doc": [
+    "What each examined non-flow word MEANS, on a row that carries no",
+    "transaction_type - the non-flow counterpart of flows[].actions.",
+    "",
+    "OrbySystems resolves every brokerage_transactions row to one value of",
+    "transaction_types (v_scoped_transactions.transaction_class): the row's",
+    "own transaction_type when it sets one, otherwise the class its action is",
+    "listed under here or in flows[], otherwise ''. Income, tax lots, option",
+    "and performance figures read that resolved class and never the action",
+    "word, so 'Qualified Dividend' with transaction_type 'dividend' counts as a",
+    "dividend exactly as an unclassified 'Dividend' does.",
+    "",
+    "'Margin Interest' is listed under fee, not interest: it is a charge the",
+    "account paid, which v_period_return books as a charge, and counting it as",
+    "interest would report it as negative income.",
+    "",
+    "Every word here must also be in non_flow_actions. A word that is there",
+    "and in no class here ('Dividend/Interest', 'Return Of Capital') is known,",
+    "so it raises no warning, but nothing that needs a class counts it."
+  ],
+
+  "non_flow_classes": [
+    {"transaction_type": "buy", "actions": ["Buy", "Reinvestment"]},
+    {"transaction_type": "sell", "actions": ["Sell"]},
+    {"transaction_type": "redemption", "actions": ["Redemption"]},
+    {"transaction_type": "dividend", "actions": ["Dividend", "Dividend Received"]},
+    {"transaction_type": "interest", "actions": ["Interest"]},
+    {"transaction_type": "capital_gain", "actions": ["Capital Gain", "Capital gain (LT)", "Capital gain (ST)"]},
+    {"transaction_type": "income", "actions": ["Income", "Revenue Credit"]},
+    {"transaction_type": "fee", "actions": ["Fee", "Margin Interest"]},
+    {"transaction_type": "tax", "actions": ["Tax"]},
+    {"transaction_type": "core_fund_activity", "actions": ["Core Fund Activity"]}
+  ],
+
+  "_corporate_action_events_doc": [
+    "A corporate_action row's action is the issuer's own label ('Expired Out',",
+    "'Option Expiration', 'Assigned Out') and its subtype is its direction",
+    "('In' / 'Out', which the securities table's merger links rely on), so",
+    "what the event WAS can only be read from the label. A row whose",
+    "transaction_type is corporate_action, or which carries none, is an event",
+    "below when any whole word of its action, compared case-insensitively, is",
+    "one of that event's words (v_scoped_transactions.corporate_event). The",
+    "option recipes use 'expired' and 'assigned' to find the row that ended a",
+    "contract. Words are lower-case letters only."
+  ],
+
+  "corporate_action_events": [
+    {"event": "expired", "words": ["expired", "expiration", "expiry"]},
+    {"event": "assigned", "words": ["assigned", "assignment"]}
   ]
 }

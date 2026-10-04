@@ -13,7 +13,10 @@ flip needed, unlike a credit-card export (see
 institutions/common.negate_amounts_and_balances for that case).
 """
 
+import parser_common
 from institutions import common
+
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
 _REQUIRED_HEADER = {"Posting Date", "Description", "Amount", "Balance", "Check or Slip #"}
 

@@ -17,9 +17,12 @@ the accounting identity
 
     Previous Balance + sum(transactions) == New Balance
 
-so a dropped, duplicated or mis-signed row fails the parse instead of
-being reported as fact. Only after that validation are amounts (and the
-derived running balance) negated - see common.negate_amounts_and_balances
+reported as a check (statement_checks): a dropped, duplicated or
+mis-signed row fails it, and the import is held for the user's review
+instead of being reported as fact. A line that looks like a row but cannot
+be read is reported too, as not read, rather than folded into the row
+above it. Amounts (and the derived running balance) are then negated - see
+common.negate_amounts_and_balances
 - to this codebase's schema convention: signed by how the transaction
 affects the money you actually have, the same way checking/savings
 already are, not by how the card issuer's own balance moves (which is
@@ -39,12 +42,14 @@ Two quirks of Chase's PDFs are worth knowing:
     without any credential. No decryption step is needed.
 """
 
+import parser_common
 import re
 from datetime import datetime
 
 from . import common
 
-_EPS = 0.005
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
+
 
 # "Account Number: XXXX XXXX XXXX 0451". Masked digits are kept as-is and
 # the caller takes the trailing 4.
@@ -75,7 +80,7 @@ _TABLE_HEADER_RE = re.compile(
 # The digits before the decimal point are optional because Chase prints
 # sub-dollar amounts with no leading zero (".99", not "0.99"). Requiring
 # them silently dropped those rows into the continuation branch below,
-# which _validate then caught as a reconciliation failure.
+# which the Account summary check then caught.
 _TXN_RE = re.compile(r"^(\d{2})/(\d{2})\s+(.*?)\s+(-?[\d,]*\.\d{2})\s*$")
 
 # Ends the activity table: the year-to-date totals block, the interest
@@ -119,12 +124,22 @@ def _txn_date(month: int, day: int, opening: datetime, closing: datetime) -> str
     return f"{year:04d}-{month:02d}-{day:02d}"
 
 
-def _parse_transactions(pages_text: list[str], opening: datetime, closing: datetime) -> list[dict]:
+# A line that starts like a row and ends in an amount, but that _TXN_RE
+# could not take - a sign or amount format it doesn't know. Reported as
+# not read (an "unread" check) rather than folded into the row above,
+# where it would silently drop out of the total.
+_ROWLIKE_RE = re.compile(r"^\d{2}/\d{2}\s.*\d\.\d{2}\)?\s*(?:CR|DR|-)?\s*$", re.IGNORECASE)
+
+
+def _parse_transactions(pages_text: list[str], opening: datetime, closing: datetime) -> tuple[list[dict], list[dict]]:
+    """The activity table's rows, and the lines in it that looked like rows
+    but could not be read (page and line numbers 1-based)."""
     transactions: list[dict] = []
+    unread: list[dict] = []
     in_table = False
 
-    for text in pages_text:
-        for line in text.split("\n"):
+    for page_no, text in enumerate(pages_text, 1):
+        for line_no, line in enumerate(text.split("\n"), 1):
             s = line.strip()
             if not s:
                 continue
@@ -146,15 +161,17 @@ def _parse_transactions(pages_text: list[str], opening: datetime, closing: datet
                         "date": _txn_date(month, day, opening, closing),
                         "description": m.group(3).strip(),
                         # Signed as printed (payments/credits negative,
-                        # purchases positive) so _validate can check it
-                        # against the statement's own reconciliation
-                        # identity; negated to this codebase's schema
-                        # convention as a final step in parse().
+                        # purchases positive), the sign the statement's
+                        # own reconciliation identity uses; negated to
+                        # this codebase's schema convention as a final
+                        # step in parse().
                         "amount": common.parse_amount(m.group(4)),
                         "balance": None,
                         "reference": "",
                     }
                 )
+            elif _ROWLIKE_RE.match(s):
+                unread.append({"page": page_no, "line": line_no, "text": s})
             elif transactions and not re.match(r"^(?:PAYMENTS|PURCHASE|CASH ADVANCE|FEES|Date of)", s, re.IGNORECASE):
                 # A wrapped detail line for the row above, e.g. an
                 # itinerary ("090226 1 R SFO SIN") or a currency
@@ -163,31 +180,17 @@ def _parse_transactions(pages_text: list[str], opening: datetime, closing: datet
 
     for txn in transactions:
         txn["description"] = re.sub(r"\s+", " ", txn["description"]).strip()
-    return transactions
+    return transactions, unread
 
 
-def _validate(combined_text: str, transactions: list[dict]) -> float | None:
-    """Checks the parse against the statement's own ACCOUNT SUMMARY and
-    returns the previous balance to seed the running balance with.
-    Raises if the accounting identity doesn't hold, so a dropped or
-    mis-signed row can't be reported as fact. Returns None (skipping the
-    check) if the summary lines aren't present.
-    """
+def _summary(combined_text: str) -> tuple[float | None, float | None]:
+    """The statement's own ACCOUNT SUMMARY: (Previous Balance, New
+    Balance) as printed, or (None, None) when it isn't there."""
     prev_m = _PREVIOUS_BALANCE_RE.search(combined_text)
     new_m = _NEW_BALANCE_RE.search(combined_text)
     if not prev_m or not new_m:
-        return None
-
-    previous = common.parse_amount(prev_m.group(1))
-    new_balance = common.parse_amount(new_m.group(1))
-    total = round(sum(t["amount"] for t in transactions), 2)
-    if abs(previous + total - new_balance) > _EPS:
-        raise ValueError(
-            f"transactions total {total} does not reconcile previous balance "
-            f"{previous} with new balance {new_balance} "
-            f"(off by {round(previous + total - new_balance, 2)})"
-        )
-    return previous
+        return None, None
+    return common.parse_amount(prev_m.group(1)), common.parse_amount(new_m.group(1))
 
 
 def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> dict:  # noqa: ARG001 - pdf_path/vision unused, see bank_statement.py contract
@@ -197,13 +200,27 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
     m = _ACCOUNT_RE.search(combined)
     account = common.last4_digits(m.group(1)) if m else ""
 
-    transactions = _parse_transactions(pages_text, opening, closing) if opening and closing else []
-    common.apply_running_balance(transactions, _validate(combined, transactions))
+    transactions, unread = _parse_transactions(pages_text, opening, closing) if opening and closing else ([], [])
+    previous, new_balance = _summary(combined)
+    common.apply_running_balance(transactions, previous)
     common.negate_amounts_and_balances(transactions)
     common.tag_account(transactions, account, "Credit Card")
+
+    # The statement's own identity, Previous Balance + every row = New
+    # Balance, for the dispatcher to check (statement_checks) - negated
+    # like the rows, into this codebase's sign convention. A dropped or
+    # mis-signed row fails it, and the user is asked rather than the
+    # import refused.
+    checks = []
+    if previous is not None:
+        checks.append({"kind": "balance", "label": "Account summary", "table": "cash_transactions",
+                       "rows": list(range(len(transactions))), "opening": -previous, "closing": -new_balance})
+    if unread:
+        checks.append({"kind": "unread", "label": "Account summary", "lines": unread})
 
     return {
         "institution": "Chase",
         "statementDate": closing.strftime("%Y-%m-%d") if closing else "",
         "transactions": transactions,
+        "checks": checks,
     }

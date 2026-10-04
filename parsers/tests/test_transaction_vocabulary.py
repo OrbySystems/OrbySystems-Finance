@@ -153,3 +153,109 @@ def test_every_flow_entry_is_well_formed():
         assert entry["direction"] in {"in", "out", "sign"}, entry
         assert isinstance(entry["external"], bool), entry
         assert entry["actions"], f"{entry['transaction_type']} lists no actions"
+
+
+# --- What a row MEANS, beyond money movement -------------------------------
+#
+# OrbySystems resolves every row to one transaction_type value before any
+# income, tax-lot, option or performance figure reads it (pkg/ingest/flow.go's
+# classExpr, exposed as v_scoped_transactions.transaction_class). Those figures
+# used to match action words instead - 'Dividend', 'Interest', 'Fee', 'Buy',
+# 'Sell', 'Reinvestment', 'Expired Out', 'Assigned Out' - so a parser that
+# followed this contract, setting transaction_type and passing the issuer's
+# own word through as action ('Qualified Dividend', 'Reinvest', 'Advisory
+# Fee'), had those rows silently left out of every one of them.
+
+
+def test_non_flow_classes_are_well_formed():
+    seen: dict[str, str] = {}
+    for entry in parser_common.VOCABULARY["non_flow_classes"]:
+        ttype = entry["transaction_type"]
+        assert ttype in parser_common.TRANSACTION_TYPES, entry
+        assert entry["actions"], f"{ttype} lists no actions"
+        for action in entry["actions"]:
+            assert action in parser_common.NON_FLOW_ACTIONS, (
+                f"{action!r} is classed as {ttype} but is not in non_flow_actions, "
+                f"so the import guard and CI would still call it unknown"
+            )
+            assert action not in parser_common.FLOW_ACTIONS, (
+                f"{action!r} is both a flow word and classed as {ttype}"
+            )
+            assert action not in seen, f"{action!r} is classed as both {seen[action]} and {ttype}"
+            seen[action] = ttype
+
+
+def test_corporate_action_events_are_well_formed():
+    seen: dict[str, str] = {}
+    for entry in parser_common.VOCABULARY["corporate_action_events"]:
+        assert entry["words"], f"{entry['event']} lists no words"
+        for word in entry["words"]:
+            assert word.isalpha() and word.islower(), (
+                f"{word!r}: event words are matched against lower-cased whole words, "
+                f"so they must be lower-case letters"
+            )
+            assert word not in seen, f"{word!r} names both {seen[word]} and {entry['event']}"
+            seen[word] = entry["event"]
+
+
+def test_transaction_class_prefers_transaction_type_then_action():
+    tc = parser_common.transaction_class
+    assert tc({"transaction_type": "dividend", "action": "Qualified Dividend"}) == "dividend"
+    assert tc({"transaction_type": "buy", "action": "Reinvest"}) == "buy"
+    assert tc({"transaction_type": "fee", "action": "Advisory Fee"}) == "fee"
+    assert tc({"action": "Dividend"}) == "dividend"
+    assert tc({"action": "Reinvestment"}) == "buy"
+    assert tc({"action": "Deposit"}) == "deposit"
+    # A charge, not income.
+    assert tc({"action": "Margin Interest"}) == "fee"
+    # A transaction_type outside the vocabulary is no classification at all.
+    assert tc({"transaction_type": "Dividend", "action": "Dividend"}) == "dividend"
+    assert tc({"action": "Something Else"}) == ""
+
+
+def test_corporate_event_reads_the_label_of_a_corporate_action():
+    ce = parser_common.corporate_event
+    assert ce({"transaction_type": "corporate_action", "action": "Expired Out"}) == "expired"
+    assert ce({"transaction_type": "corporate_action", "action": "Option Expiration"}) == "expired"
+    assert ce({"transaction_type": "corporate_action", "action": "Assigned Out"}) == "assigned"
+    assert ce({"action": "ASSIGNMENT"}) == "assigned"
+    assert ce({"transaction_type": "corporate_action", "action": "Merger Out"}) == ""
+    # A trade is never an expiry, whatever its label says.
+    assert ce({"transaction_type": "sell", "action": "Assigned Out"}) == ""
+
+
+def test_looks_like_option_contract():
+    looks = parser_common.looks_like_option_contract
+    assert looks({"description": "You Sold CALL (AVGO) BROADCOM INC COM SEP 18 26 $420 (100 SHS)"})
+    assert looks({"description": "PUT AAPL 01/16/2026 150.00"})
+    assert looks({"description": "AAPL 16JAN26 150 C CALL"})
+    # A covered-call fund is a fund, and an assignment's stock leg is stock.
+    assert not looks({"description": "Dividend Received GLOBAL X NASDAQ 100 COVERED CALL ETF"})
+    assert not looks({"description": "You Sold BROADCOM INC COM ASSIGNED CALLS"})
+
+
+def test_every_bundled_row_resolves_to_a_class(swept):
+    """A row that resolves to no class is in no income, tax-lot, option or
+    performance figure. Set transaction_type, or class the word in
+    non_flow_classes."""
+    rows, _ = swept
+    offenders: dict[tuple[str, str], set[str]] = {}
+    for fixture, row in rows:
+        if not parser_common.transaction_class(row):
+            key = (row.get("action") or "", row.get("transaction_type") or "")
+            offenders.setdefault(key, set()).add(fixture)
+    assert not offenders, "rows that resolve to no transaction class:\n" + "\n".join(
+        f"  action={a!r} transaction_type={t!r}  (from {', '.join(sorted(f))})"
+        for (a, t), f in sorted(offenders.items()))
+
+
+def test_option_contract_rows_carry_an_occ_symbol(swept):
+    """OrbySystems recognises an option by its symbol's OCC shape alone; a
+    contract row carrying a CUSIP or a bare ticker is in no option figure."""
+    rows, _ = swept
+    bad = [(fixture, row.get("symbol"), row.get("description"))
+           for fixture, row in rows
+           if parser_common.looks_like_option_contract(row)
+           and not parser_common.OCC_SYMBOL.match(row.get("symbol") or "")]
+    assert not bad, "option contract rows without an OCC symbol:\n" + "\n".join(
+        f"  {f}: symbol={s!r} description={d!r}" for f, s, d in bad)

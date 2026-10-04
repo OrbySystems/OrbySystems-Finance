@@ -252,6 +252,12 @@ def main() -> None:
     argv, only_extra_parser = _pop_flag_value(argv, "--only-extra-parser")
     argv, kind_filter = _pop_flag_value(argv, "--kind")
     argv, expected_parser = _pop_flag_value(argv, "--expected-parser")
+    argv, adjust_raw = _pop_flag_value(argv, "--adjust")
+    try:
+        adjust = parser_common.parse_adjust_flag(adjust_raw)
+    except ValueError as e:
+        print(json.dumps({"error": f"bad --adjust: {e}"}))
+        sys.exit(1)
     vision = None
     if vision_endpoint and vision_model:
         vision = {"endpoint": vision_endpoint, "model": vision_model, "api_key": vision_api_key or ""}
@@ -311,6 +317,11 @@ def main() -> None:
             module, e, "pdf", input_stats, "\n".join(pages_text)
         )
         print(json.dumps({"error": message, "diagnostic": diagnostic}))
+        sys.exit(1)
+    try:
+        result = parser_common.finish_parse(result, module, adjust)
+    except ValueError as e:
+        print(json.dumps({"error": f"could not apply the answers to this statement: {e}"}))
         sys.exit(1)
 
     result["detected"] = True
