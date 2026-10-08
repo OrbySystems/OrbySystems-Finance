@@ -107,14 +107,22 @@ options month, a merger, a securities-lending credit, a netted
 deposit/withdrawal day, a zeroed core account, and two different
 redaction styles.
 
-Validated against the statement's own printed totals - see the four
+Validated against the statement's own printed totals - see the
 _check_* functions, which raise rather than return quietly-wrong
 numbers: sum of holdings' current_value against "Total Holdings", the
 buy/sell totals against "Total Securities Bought"/"Total Securities
 Sold", the income rows against "Total Dividends, Interest & Other
-Income", the transfers against "Total Deposits"/"Total Withdrawals", and
-the core-fund rows against both "Total Core Fund Activity" and their own
-printed running balance.
+Income", the transfers against "Total Deposits"/"Total Withdrawals", the
+core-fund rows against both "Total Core Fund Activity" and their own
+printed running balance, and the corporate-action cash against "Total
+Other Activity In"/"Out" (_check_corporate) - this last one is also the
+reconciliation backstop for the "corporate" section's own row-start
+guard (_DATED_ROW_RE, in the section's parsing loop): a line that opens
+with its own date is always a new row there, never a continuation of the
+one before it, so one this module doesn't yet recognize raises instead
+of being silently folded into the previous row's description - which is
+what used to happen to a real statement's "In Lieu Of Frx Share"
+fractional-share payouts before both of these existed.
 
 Those line up with the account-value summary on page 1, which is not
 asserted here only because it needs a figure from outside these tables:
@@ -441,6 +449,42 @@ _INCOME_ROW_RE = re.compile(
     r"\s+(?P<price>" + _NUM + r"|-)"
     r"\s+(?P<amount>" + _NUM + r")$"
 )
+# A spin-off: new shares of a security the account never bought, handed
+# out against an existing holding - printed under "Dividends, Interest &
+# Other Income" (it is tax-relevant the same way a dividend is) but
+# shaped nothing like one: quantity is real, price and amount are both
+# "-" (no dollar figure at all on this line - see this constant's own
+# handling in _parse_account_pages for where the basis actually comes
+# from instead), and the row is followed by its own continuation line
+# naming the security it was spun off from. _INCOME_ROW_RE can't match
+# this - its `amount` group requires a real number, which a plain-dash
+# amount never is - so a "Distribution" row fell through to the
+# unmatched-line branch and got silently appended onto the PRECEDING
+# row's name instead of being dropped cleanly, corrupting an unrelated
+# dividend's own description (found with two real spin-offs in one
+# statement: Kyndryl out of IBM, Orion Office REIT out of Realty Income -
+# both swallowed the dividend printed immediately before them).
+_SPINOFF_DISTRIBUTION_RE = re.compile(
+    r"^" + _ROW_MARKER + r"(?P<date>\d{2}/\d{2})"
+    r"\s+(?P<name>\S.*?)"
+    r"\s+(?P<security_id>[0-9A-Z]{9})"
+    r"\s+Distribution"
+    r"\s+(?P<quantity>" + _NUM + r")"
+    r"\s+-\s+-$"
+)
+# "SPINOFF FROM:(IBM )" - the parent security's own TICKER, not its
+# CUSIP (Activity rows elsewhere identify a security by CUSIP, but this
+# continuation line is the one place Fidelity prints a bare ticker
+# instead). Kept on the row as related_security_id anyway - deliberately
+# NOT fed into the merger/ticker-change successor-linking
+# collectSecuritySuccessors does (pkg/ingest/securities.go), which reads
+# subtype == corporateActionIn/Out and expects a CUSIP there: a spin-off
+# is the opposite situation a merger is - the parent (IBM) keeps
+# existing right alongside the new spun-off security, it did not become
+# it - so this row's own subtype ("spinoff", set below) deliberately
+# does not match either of those cases, and that successor-linking code
+# silently ignores any subtype it does not recognize.
+_SPINOFF_FROM_RE = re.compile(r"^SPINOFF FROM:\(\s*(?P<parent>[A-Z.]+)\s*\)$")
 # A Deposits/Withdrawals row: date, an optional reference, a free-text
 # description and the amount, signed as printed (in for a deposit, out
 # for a withdrawal).
@@ -480,19 +524,38 @@ _TRANSFER_VALUE_CONTINUATION_RE = re.compile(r"^TRANSACTION\s+\$?(?P<amount>[\d,
 # adjustment. Same seven-column shape as a trade row, but with "-" in
 # every money column - which is why the quantity is the last thing this
 # has to match.
+#
+# A merger's fractional-share remainder prints as its own row under the
+# same section ("In Lieu Of Frx Share", 4 words after the first - hence
+# the {0,4} cap, wider than every other label here) with NO share
+# quantity of its own (just "-" in that column, since what's being paid
+# out is cash, not shares) - so quantity has to accept the same
+# placeholder tokens `_VALUE` already does for the money columns, not
+# only a real number. `_amount` already turns a "-" there into None.
+# That row's own cost-basis-per-share column also carries the FIFO 'f'
+# marker (see _amount) on a figure, not just on a placeholder - _VALUE
+# alone doesn't allow that, hence _CORPORATE_VALUE here instead of it.
+_CORPORATE_VALUE = r"(?:" + _VALUE + r"|" + _NUM + r"f)"
 _CORPORATE_ROW_RE = re.compile(
     r"^" + _ROW_MARKER + r"(?P<date>\d{2}/\d{2})"
     r"\s+(?P<name>\S.*?)"
     r"\s+(?P<security_id>[0-9A-Z]{9})"
-    r"\s+(?P<label>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})"
-    r"\s+(?P<quantity>" + _NUM + r")"
-    r"(?P<values>(?:\s+" + _VALUE + r")*)\s*$"
+    r"\s+(?P<label>[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,4})"
+    r"\s+(?P<quantity>" + _CORPORATE_VALUE + r")"
+    r"(?P<values>(?:\s+" + _CORPORATE_VALUE + r")*)\s*$"
 )
+# A new row in this section always starts with its own date, whatever
+# label or column shape follows it - used to tell "a row shape this
+# module doesn't recognize yet" apart from "an annotation continuing the
+# row above", so the former can raise instead of being silently folded
+# into the latter (see the "corporate" section's own loop below).
+_DATED_ROW_RE = re.compile(r"^" + _ROW_MARKER + r"\d{2}/\d{2}\s")
 # The successor/predecessor CUSIP, which the notes under a merger row
 # print in one of two directions: the incoming leg says what it came
 # from, the outgoing leg says what it went to.
 _MERGER_FROM_RE = re.compile(r"\bMER FROM\s+(?P<cusip>[0-9A-Z]{9})\b")
 _MERGER_TO_RE = re.compile(r"\bCUSIP\s+(?P<cusip>[0-9A-Z]{9})\b")
+_MERGER_EXCHANGED_FOR_RE = re.compile(r"\bEXCHANGED FOR\s+(?P<cusip>[0-9A-Z]{9})\b")
 # The reorganization reference. It follows "#REOR" on the same line
 # when there is room for it and wraps onto the next line when there is
 # not, so both shapes have to be read - a wrapped one left unread ends
@@ -641,6 +704,12 @@ _TOTAL_INCOME_RE = re.compile(
     r"^Total Dividends, Interest & Other Income\s+(" + _NUM + r")\s*$", re.M
 )
 _TOTAL_CORE_RE = re.compile(r"^Total Core Fund Activity\s+(" + _NUM + r")\s*$", re.M)
+# Printed the same multi-column way an individual corporate-action row
+# is ("Total Other Activity In - $91.71") - only the trailing figure is
+# the total, hence reusing _corporate_amount rather than this group
+# directly, same as every row in the section it totals.
+_TOTAL_OTHER_ACTIVITY_IN_RE = re.compile(r"^Total Other Activity In\s+(?P<values>.+)$", re.M)
+_TOTAL_OTHER_ACTIVITY_OUT_RE = re.compile(r"^Total Other Activity Out\s+(?P<values>.+)$", re.M)
 
 
 def detect(head_text: str) -> tuple[bool, str]:
@@ -1040,6 +1109,41 @@ def _summary_charges(combined: str, statement_date: str) -> list[dict]:
     return rows
 
 
+def _check_corporate(corporate: list[dict], text: str) -> None:
+    """Verifies the corporate-action rows' cash against the statement's
+    own "Total Other Activity In"/"Out" lines.
+
+    Almost always both totals are 0.00 - a pure share exchange moves no
+    cash (see the module docstring) - so this mostly just confirms that.
+    But it is also the section's safety net against the one failure mode
+    _DATED_ROW_RE's guard (above, in the "corporate" section's own loop)
+    cannot cover on its own: that guard only fires on an unrecognized row
+    that announces itself with a fresh date, so between the two, this
+    reconciliation is what would have caught today's bug even before
+    _CORPORATE_VALUE/_DATED_ROW_RE existed, and keeps catching whatever
+    the next unanticipated reorg label turns out to be - mergers,
+    assignments, share-lending adjustments and in-lieu payouts are not a
+    closed vocabulary.
+    """
+    for regex, subtype, label in (
+        (_TOTAL_OTHER_ACTIVITY_IN_RE, "In", "Total Other Activity In"),
+        (_TOTAL_OTHER_ACTIVITY_OUT_RE, "Out", "Total Other Activity Out"),
+    ):
+        m = regex.search(text)
+        if not m:
+            continue
+        want = _corporate_amount(m.group("values"))
+        got = round(sum(t["amount"] for t in corporate if t.get("subtype") == subtype), 2)
+        if abs(got - want) > _EPS:
+            raise diagnostic_helpers.reconciliation_error(
+                f"parsed other activity {subtype.lower()} cash total {got} does not match "
+                f"statement's {label!r} {want} (off by {round(got - want, 2)})",
+                got,
+                want,
+                "activity",
+            )
+
+
 def _check_transfers(transfers: list[dict], text: str) -> None:
     for regex, action, label in (
         (_TOTAL_DEPOSITS_RE, _DEPOSIT_ACTION, "Total Deposits"),
@@ -1312,8 +1416,19 @@ def _collect_corporate_note(row: dict, line: str) -> None:
         if m:
             row.setdefault("reference", m.group("reference"))
             line = line.strip()[m.end():]
+    if row.pop("_await_merger_from", False):
+        m = re.match(r"^\s*(?P<cusip>[0-9A-Z]{9})\b", line)
+        if m:
+            row["related_security_id"] = m.group("cusip")
+            line = line[m.end():]
+    if row.get("_exchange_note") and not row.get("related_security_id"):
+        # "EXCHANGED" can start on the row while "FOR CUSIP" and the
+        # identifier each occupy their own continuation line.
+        m = re.match(r"^\s*(?P<cusip>[0-9A-Z]{9})\b", line)
+        if m:
+            row["related_security_id"] = m.group("cusip")
     if not row.get("related_security_id"):
-        for pattern in (_MERGER_FROM_RE, _MERGER_TO_RE):
+        for pattern in (_MERGER_FROM_RE, _MERGER_TO_RE, _MERGER_EXCHANGED_FOR_RE):
             m = pattern.search(line)
             if m:
                 row["related_security_id"] = m.group("cusip")
@@ -1323,10 +1438,54 @@ def _collect_corporate_note(row: dict, line: str) -> None:
         row["reference"] = ref.group("reference")
     elif _REOR_WRAPPED_RE.search(line):
         row["_await_reference"] = True
+    if row.get("_exchange_note"):
+        return
     text = _CORPORATE_NOTE_RE.sub("", line)
     text = " ".join(_CORPORATE_NOTE_RESIDUE_RE.sub(" ", text).split())
     if text:
         row["_name"] += " " + text
+
+
+def _collect_inline_corporate_note(row: dict) -> None:
+    """Move a merger note printed in the security-name column off the name."""
+    inline_successor = _MERGER_EXCHANGED_FOR_RE.search(row["_name"])
+    if inline_successor:
+        row["related_security_id"] = inline_successor.group("cusip")
+        row["_name"] = row["_name"][:inline_successor.start()].strip()
+    exchanged = re.search(r"\bEXCHANGED\b", row["_name"])
+    if exchanged:
+        row["_name"] = row["_name"][:exchanged.start()].strip()
+        row["_exchange_note"] = True
+    merger_from = re.search(r"\bMER FROM(?:\s+(?P<cusip>[0-9A-Z]{9}))?$", row["_name"])
+    if merger_from:
+        row["_name"] = row["_name"][:merger_from.start()].strip()
+        if merger_from.group("cusip"):
+            row["related_security_id"] = merger_from.group("cusip")
+        else:
+            row["_await_merger_from"] = True
+
+
+def _link_merger_legs(rows: list[dict]) -> None:
+    """Fill a missing merger link from the other leg's security CUSIP.
+
+    The paired rows use stable identifiers even when Fidelity changes the
+    wording or line wrapping of an exchange note. Only a unique match on
+    the same date is used; ambiguous rows are left for explicit notes.
+    """
+    mergers = [row for row in rows if row["action"].startswith("Merger ")]
+    for row in mergers:
+        related = row.get("related_security_id")
+        if not related:
+            continue
+        other_action = "Merger Out" if row["action"] == "Merger In" else "Merger In"
+        matches = [
+            other for other in mergers
+            if other["action"] == other_action
+            and other["date"] == row["date"]
+            and other["security_id"] == related
+        ]
+        if len(matches) == 1:
+            matches[0].setdefault("related_security_id", row["security_id"])
 
 
 def _clean_internal_transfer_name(text: str) -> tuple[str, str]:
@@ -1391,6 +1550,8 @@ def _finish_activity(rows: list[dict], holdings: list[dict]) -> None:
     for row in rows:
         row.pop("_await_disallowed", None)
         row.pop("_await_reference", None)
+        row.pop("_await_merger_from", None)
+        row.pop("_exchange_note", None)
         row.pop("_await_value", None)
         row.pop("_balance", None)
         # Stripped again here, not just per line: an annotation is
@@ -1543,8 +1704,38 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
             continue
 
         if section == "income":
+            spinoff = _SPINOFF_DISTRIBUTION_RE.match(line)
             match = _INCOME_ROW_RE.match(line)
-            if match:
+            if spinoff:
+                # transaction_type is set explicitly here, not left to
+                # the action-word fallback: "Distribution" is already a
+                # recognized word in transaction_vocabulary.json, but for
+                # an unrelated flow (an RMD/retirement-account CASH
+                # distribution leaving the portfolio). Leaving this row
+                # to that fallback would misclassify a spin-off - real
+                # shares arriving, no cash moving at all - as money
+                # leaving the account. subtype further narrows it to
+                # "spinoff" specifically, which pkg/ingest/tax_lots.go
+                # reads to open a new lot dated the day the shares were
+                # actually received (fixing an otherwise-unavailable
+                # acquisition date) rather than falling back to an
+                # inferred one - see that file's own handling of it.
+                pending = {
+                    "date": _resolve_date(spinoff.group("date"), start, end),
+                    "_label": "Distribution",
+                    "_name": spinoff.group("name"),
+                    "amount": 0.0,
+                    "action": "Distribution",
+                    "transaction_type": "corporate_action",
+                    "subtype": "spinoff",
+                    "security_id": spinoff.group("security_id"),
+                    "security_id_type": "CUSIP",
+                    "quantity": _amount(spinoff.group("quantity")),
+                    "price": None,
+                    "currency_code": _CURRENCY,
+                }
+                income.append(pending)
+            elif match:
                 pending = {
                     "date": _resolve_date(match.group("date"), start, end),
                     "_label": match.group("label"),
@@ -1559,6 +1750,10 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
                 }
                 income.append(pending)
             elif pending is not None:
+                spinoff_from = _SPINOFF_FROM_RE.match(line.strip())
+                if spinoff_from and pending.get("subtype") == "spinoff":
+                    pending["related_security_id"] = spinoff_from.group("parent")
+                    continue
                 text = _strip_notes(line)
                 if text and not _BARE_TRADE_DATE_RE.match(text):
                     pending["_name"] += " " + text
@@ -1678,8 +1873,36 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
                     "quantity": _amount(match.group("quantity")),
                     "currency_code": _CURRENCY,
                 }
+                # Some statements put "EXCHANGED FOR <CUSIP>" on the
+                # row itself, not on a following annotation line.
+                # Fidelity can split "MER FROM" from its CUSIP across
+                # the row and its continuation line.
+                _collect_inline_corporate_note(pending)
                 corporate.append(pending)
             elif pending is not None:
+                # A line that starts with its own date is a new row, not
+                # a continuation of the one before it - whatever label it
+                # carries. Letting _CORPORATE_ROW_RE's non-match fall
+                # straight through to _collect_corporate_note (as this
+                # used to) treats "a row shape this module hasn't learned
+                # yet" the same as "an annotation wrapped onto the next
+                # line", and the row's own cash gets silently absorbed
+                # into the previous row's description instead of being
+                # counted - exactly what happened to a real statement's
+                # "In Lieu Of Frx Share" payouts before this guard and
+                # _CORPORATE_VALUE existed. Raising here instead means an
+                # unrecognized row fails the import loudly - consistent
+                # with every _check_* function's own "raise rather than
+                # return quietly-wrong numbers" rule - rather than quietly
+                # losing money. _check_corporate below is the second,
+                # independent net: it would also have caught this one
+                # specifically, by reconciling against the section's own
+                # printed total, and still catches a row that merely
+                # LOOKS like a continuation but shouldn't be one.
+                if _DATED_ROW_RE.match(line):
+                    raise ValueError(
+                        f"unrecognized {section_label} row: {line!r}"
+                    )
                 _collect_corporate_note(pending, line)
             continue
 
@@ -1718,6 +1941,7 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
     charges = _summary_charges(combined, statement_date)
 
     _finish_holdings(holdings)
+    _link_merger_legs(corporate)
     _check_core_fund_activity(core, "\n".join(lines))
     _finish_activity(
         trades + income + transfers + exchanges + internal_transfers + corporate + charges, holdings)
@@ -1727,6 +1951,7 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
     _check_trades(trades, cleaned_text)
     _check_income(income, cleaned_text)
     _check_transfers(transfers + exchanges, cleaned_text)
+    _check_corporate(corporate, cleaned_text)
 
     for rows in (holdings, trades, income, transfers, exchanges, internal_transfers, corporate, charges):
         # "account" is a display label, truncated to the last 4 digits

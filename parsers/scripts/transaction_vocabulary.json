@@ -209,11 +209,19 @@
     "below when any whole word of its action, compared case-insensitively, is",
     "one of that event's words (v_scoped_transactions.corporate_event). The",
     "option recipes use 'expired' and 'assigned' to find the row that ended a",
-    "contract. Words are lower-case letters only."
+    "contract. 'reverse_split' is listed before 'split' deliberately - a",
+    "label like 'Reverse Stock Split' contains the word 'split' too, and the",
+    "first event whose word list matches wins, so 'reverse' has to be checked",
+    "first or a reverse split would always read as an ordinary one.",
+    "pkg/ingest/tax_lots.go's applySplitRatio is what actually turns one of",
+    "these two into a lot adjustment, not just a label. Words are lower-case",
+    "letters only."
   ],
 
   "corporate_action_events": [
     {"event": "expired", "words": ["expired", "expiration", "expiry"]},
-    {"event": "assigned", "words": ["assigned", "assignment"]}
+    {"event": "assigned", "words": ["assigned", "assignment"]},
+    {"event": "reverse_split", "words": ["reverse"]},
+    {"event": "split", "words": ["split"]}
   ]
 }

@@ -40,6 +40,13 @@ with the statement each was learned from:
     into a single sweep row
   * a zero closing balance printed as "-" rather than $0.00
   * a merger moving a position between two CUSIPs with no cash amount
+  * a spin-off: a "Distribution" row under Dividends/Interest/Other
+    Income with real shares but NO dollar figure at all ("- -" for both
+    price and amount), followed by its own "SPINOFF FROM:(TICKER)"
+    continuation line - printed nothing like a dividend despite being in
+    that same section, and found swallowing the dividend printed
+    immediately before it (see fidelity_brokerage.py's
+    _SPINOFF_DISTRIBUTION_RE) before this was recognized at all
   * sections that run across a page break and reprint their own header
   * two different redaction styles for the account number - one keeping
     the "Account #" label, one masking the label itself
@@ -108,6 +115,13 @@ SECURITIES = {
     "ZQFF": {"name": ["ZENITH FUSION HOLDINGS COM"], "cusip": "666666FF6",
              "section": "Stocks", "sub": "Common Stock"},
     "ZQGG": {"name": ["ZENITH GLOBAL MUNI FD INC", "COM STK USD0.1"], "cusip": "777777GG7",
+             "section": "Stocks", "sub": "Common Stock"},
+    # Spun off from ZQFF in February (see month_two's income list) - a
+    # brand new holding the account never bought, which is why it has no
+    # cost_basis figure of its own: that comes only from what the
+    # Holdings row itself reports, via the Distribution/spin-off handling
+    # in fidelity_brokerage.py and pkg/ingest/tax_lots.go.
+    "ZQHH": {"name": ["ZENITH HIVE SYSTEMS COM"], "cusip": "888888HH8",
              "section": "Stocks", "sub": "Common Stock"},
     "SYNXX": {"name": ["SYNTHETIC GOVERNMENT MONEY", "MARKET"], "cusip": "999999XX9",
               "section": "Core Account", "sub": None},
@@ -229,6 +243,12 @@ def month_two():
         Holding("ZQDD", 800.0, 221.75, 148_000.00, 171_600.00, margin=True, eai=1_240.00),
         Holding("ZQEE", 2_000.0, 19.10, 36_400.00, 37_500.00, margin=True, eai=1_500.00),
         Holding("ZQFF", 1_600.0, 107.50, 160_000.00, 168_000.00, eai=980.00),
+        # The spin-off recipient: no begin_value (not held last month -
+        # renders as "unavailable", confirmed against a real statement),
+        # and its cost_basis is the real-world figure Fidelity itself
+        # allocated to it, printed here ONLY in this Holdings row - the
+        # Activity row below carries no dollar amount at all.
+        Holding("ZQHH", 20.0, 15.80, 628.30, None, eai=None),
         Holding("ZQDD", -3.0, 4.25, -2_400.00, 0.00, margin=True,
                 option={"occ": "ZQDD260918C230", "text": ["SEP 18 26 $230 (100 SHS)", "SHT"],
                         "kind": "CALL", "underlying": "ZQDD",
@@ -249,6 +269,13 @@ def month_two():
     income = [
         {"date": "02/06", "symbol": None, "action": "Interest", "qty": None,
          "price": None, "amount": 3.44, "name": ["FULLY PAID"], "cusip": "888888II8"},
+        # A spin-off: real shares, no dollar amount on this line at all
+        # ("- -" where price/amount would be - a real Fidelity statement
+        # does exactly this), with its own "SPINOFF FROM:(...)"
+        # continuation line naming the parent security by ticker, not
+        # CUSIP (the one place Fidelity prints a bare ticker instead).
+        {"date": "02/09", "symbol": "ZQHH", "action": "Distribution", "qty": 20.0,
+         "spinoff_from": "ZQFF"},
         {"date": "02/26", "symbol": "ZQEE", "action": "Reinvestment", "qty": 21.5,
          "price": 19.05, "amount": -409.58, "trade_date": "02-25-26", "split_trade_date": True},
         {"date": "02/26", "symbol": "ZQEE", "action": "Dividend Received",
@@ -705,10 +732,21 @@ class Statement:
         self.income_header()
         income_total = 0.0
         for r in d["income"]:
-            self.ensure(4, "Activity", self.income_header)
+            self.ensure(5 if r.get("spinoff_from") else 4, "Activity", self.income_header)
             p = self.page
             name = r.get("name") or SECURITIES[r["symbol"]]["name"]
             cusip = r.get("cusip") or SECURITIES[r["symbol"]]["cusip"]
+            if r.get("spinoff_from"):
+                # No price, no amount - "- -" is exactly what a real
+                # statement prints here (see this generator's own module
+                # docstring note on fidelity_brokerage.py's
+                # _SPINOFF_DISTRIBUTION_RE). The continuation line names
+                # the parent by ticker, which is why spinoff_from is a
+                # bare symbol string here and not a CUSIP.
+                qty = money(r["qty"], places=3)
+                p.line(f"{r['date']} {name[0]} {cusip} Distribution {qty} - -")
+                p.line(f"SPINOFF FROM:({r['spinoff_from']} )")
+                continue
             qty = money(r["qty"], places=3) if r["qty"] is not None else "-"
             price = money(r["price"], dollar=True, places=5) if r["price"] is not None else "-"
             p.line(f"{r['date']} {name[0]} {cusip} {r['action']} {qty} {price} "
@@ -739,18 +777,26 @@ class Statement:
             for label, key in (("Other Activity In", "in"), ("Other Activity Out", "out")):
                 p.line(label)
                 self.trade_header()
+                section_total = 0.0
                 if d["merger"]:
                     m = d["merger"][key]
-                    amt = money(m["amount"], dollar=True) if m.get("amount") else "-"
+                    row_amount = m.get("amount") or 0.0
+                    amt = money(row_amount, dollar=True) if row_amount else "-"
                     p.line(f"{m['date']} {m['name'][0]} {m['cusip']} Merger "
                            f"{money(m['qty'], places=3)} - - {amt}")
                     for w in m["name"][1:] + m["note"]:
                         p.line(w, x=72.0)
+                    section_total += row_amount
                 if d["adjustments"]:
                     sign = -1 if key == "in" else 1
                     p.line(f"02/20 {'DECREASE' if key == 'in' else 'INCREASE'} COLLATERAL "
                            f"L0C990030 Adjustment {money(sign * 25_000.0, places=3)} - - -")
-                p.line(f"Total {label} - -")
+                # Adjustments never carry a Transaction Amount of their
+                # own (the collateral itself isn't cash changing hands),
+                # so they never add to section_total - matching every
+                # real statement seen so far.
+                p.line(f"Total {label} "
+                       + (money(round(section_total, 2), dollar=True) if section_total else "-"))
                 p = self.page
 
         # --- Deposits / Withdrawals ---

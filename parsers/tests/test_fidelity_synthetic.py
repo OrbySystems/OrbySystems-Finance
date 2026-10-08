@@ -13,9 +13,63 @@ import json
 import pytest
 
 from conftest import FIXTURES, approx
+from institutions import fidelity_brokerage
 
 _EXPECT = FIXTURES / "fidelity-synthetic-expectations.json"
 _YEAR_END_EXPECT = FIXTURES / "fidelity-synthetic-year-end-expectations.json"
+
+
+def test_merger_out_direct_exchanged_for_cusip_note():
+    row = {"_name": "EXXON MOBIL CORP COM"}
+    fidelity_brokerage._collect_corporate_note(row, "EXCHANGED FOR 30233Q108")
+    assert row["related_security_id"] == "30233Q108"
+
+
+def test_merger_in_wraps_mer_from_cusip():
+    row = {"_name": "QXO INC COM NEW MER FROM"}
+    fidelity_brokerage._collect_inline_corporate_note(row)
+    assert row["_await_merger_from"]
+    fidelity_brokerage._collect_corporate_note(row, "89055F103")
+    assert row["related_security_id"] == "89055F103"
+    assert row["_name"] == "QXO INC COM NEW"
+
+
+@pytest.mark.parametrize(
+    ("name", "notes", "successor", "reference", "clean_name"),
+    [
+        (
+            "EXXON MOBIL CORP COM EXCHANGED",
+            ["FOR CUSIP", "30233Q108 MER PAYOUT #REOR", "M0051755570000"],
+            "30233Q108", "M0051755570000", "EXXON MOBIL CORP COM",
+        ),
+        (
+            "TOPBUILD CORP COM EXCHANGED FOR",
+            ["20.20", "SHARES OF CUSIP 82846H405 MER", "PAYOUT #REOR M0051757350000"],
+            "82846H405", "M0051757350000", "TOPBUILD CORP COM",
+        ),
+    ],
+)
+def test_merger_out_wrapped_exchange_note(name, notes, successor, reference, clean_name):
+    row = {"_name": name}
+    fidelity_brokerage._collect_inline_corporate_note(row)
+    for note in notes:
+        fidelity_brokerage._collect_corporate_note(row, note)
+    assert row["related_security_id"] == successor
+    assert row["reference"] == reference
+    assert row["_name"] == clean_name
+
+
+def test_merger_legs_fill_missing_link_from_cusips():
+    incoming = {
+        "date": "2026-07-08", "action": "Merger In",
+        "security_id": "82846H405", "related_security_id": "89055F103",
+    }
+    outgoing = {
+        "date": "2026-07-08", "action": "Merger Out",
+        "security_id": "89055F103",
+    }
+    fidelity_brokerage._link_merger_legs([incoming, outgoing])
+    assert outgoing["related_security_id"] == "82846H405"
 
 
 def _statements():
@@ -102,6 +156,45 @@ def test_fidelity_merger_with_cash_payout(run_statement):
     assert approx(inc["amount"], 0.0)
     assert inc["security_id"] == "777777GG7" and inc["related_security_id"] == "666666FF6"
     assert inc["reference"] == "M0099887766001"
+
+
+def test_fidelity_spinoff_distribution(run_statement):
+    """The February statement's spin-off: a brand new symbol (ZQHH,
+    spun off from the already-held ZQFF) whose only Activity row is a
+    "Distribution" under Dividends/Interest/Other Income with real
+    shares but NO dollar figure at all ("- -" for both price and
+    amount), followed by its own "SPINOFF FROM:(ZQFF )" continuation
+    line. Before fidelity_brokerage.py recognized this shape, it fell
+    through to the unmatched-line branch and got silently appended onto
+    the PRECEDING row's own description - this also asserts that row
+    (the "Interest FULLY PAID" credit right before it) came out clean."""
+    stmt = run_statement(
+        "fidelity-synthetic-202602.pdf", "--expected-parser", "fidelity_brokerage.py"
+    )
+
+    spinoff = next(t for t in stmt.brokerage_transactions if t.get("symbol") == "ZQHH")
+    assert spinoff["action"] == "Distribution"
+    assert spinoff["transaction_type"] == "corporate_action"
+    assert spinoff["subtype"] == "spinoff"
+    assert approx(spinoff["quantity"], 20.0)
+    assert approx(spinoff["amount"], 0.0)
+    assert spinoff["security_id"] == "888888HH8"
+    assert spinoff["related_security_id"] == "ZQFF"
+    assert "SPINOFF" not in spinoff["description"]
+
+    # The row printed immediately before it must not have absorbed any
+    # of the spin-off's own text.
+    interest = next(t for t in stmt.brokerage_transactions if t["action"] == "Interest")
+    assert interest["description"] == "Interest FULLY PAID"
+    assert approx(interest["amount"], 3.44)
+
+    # The new position itself: no begin_value (brand new this month,
+    # renders as "unavailable" on a real statement) and its own real
+    # cost basis, which comes ONLY from this Holdings row - the Activity
+    # row above carries no dollar amount to derive it from.
+    holding = next(h for h in stmt.brokerage_holdings if h.get("symbol") == "ZQHH")
+    assert approx(holding["quantity"], 20.0)
+    assert approx(holding["cost_basis_total"], 628.30)
 
 
 def test_extract_fidelity_synthetic_year_end(run_statement):
