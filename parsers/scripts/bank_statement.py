@@ -130,6 +130,14 @@ repo" for exactly what that means and its limitations (no network
 access, no arbitrary filesystem access, no per-plugin dependency
 installation).
 
+A dropped-in parser that claims a statement and then fails is passed
+over: the statement is read as if that file weren't installed, so the
+bundled parser it replaced (if any) claims it in its slot, then the
+parsers after it (parser_common.read_claimed). The output names each
+one passed over under "failedExtraParsers" - its file name, and its
+failure's code and stage - outside the diagnostic, since the file name
+is the user's own. A bundled parser that fails still ends the import.
+
 <orbySystemsDir>/ingest/parsers/ is shared with csv_statement.py's own
 --extra-parsers-dir - a CSV-shaped detect()/parse() module dropped there
 is simply never matched by this dispatcher (its detect() gets called
@@ -155,7 +163,9 @@ module's parse() (see parser_common.check_expected_parser). This is how
 Verify tells "the drafted parser under test was shadowed by another,
 already-installed parser" apart from "the drafted parser's own parse()
 has a bug" - the latter only ever surfaces once the named parser is
-confirmed to be the one that actually ran.
+confirmed to be the one that actually ran. No parser is passed over in
+this mode, or with --only-extra-parser: the named parser's failure is
+the answer.
 """
 
 import contextlib
@@ -273,8 +283,13 @@ def main() -> None:
 
     extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "pdf", only_extra_parser)
     parsers = extra_parsers if only_extra_parser else parser_common.merge_parsers(_PARSERS, extra_parsers)
+    bundled = [] if only_extra_parser else _PARSERS
     if kind_filter:
         parsers = [m for m in parsers if parser_common.module_kind(m) == kind_filter]
+        bundled = [m for m in bundled if parser_common.module_kind(m) == kind_filter]
+    # A drop-in that claims the statement and fails is passed over
+    # (parser_common.read_claimed) - unless one named parser is asked for.
+    fall_through = not (expected_parser or only_extra_parser)
 
     input_stats = {}
     try:
@@ -287,9 +302,11 @@ def main() -> None:
                 "pageCount": len(pdf.pages),
                 "textPageCount": sum(1 for text in head_text if text.strip()),
             }
-            module, reason = parser_common.detect(
-                lambda m: _without_parser_stdout(m.detect, joined_head_text), parsers
-            )
+
+            def call_detect(m):
+                return _without_parser_stdout(m.detect, joined_head_text)
+
+            module, reason = parser_common.detect(call_detect, parsers)
             if msg := parser_common.check_expected_parser(module, reason, expected_parser):
                 print(json.dumps({"error": msg}))
                 sys.exit(1)
@@ -310,14 +327,23 @@ def main() -> None:
         print(json.dumps({"error": f"failed to read PDF: {e}"}))
         sys.exit(1)
 
-    try:
-        result = _without_parser_stdout(_parse_matched, module, pages_text, pdf_path, vision)
-    except Exception as e:  # noqa: BLE001
+    # Each parser gets its own copy of the pages: one that fails after
+    # changing them must not hand the parser after it a different statement.
+    read = parser_common.read_claimed(
+        module,
+        lambda m: _without_parser_stdout(_parse_matched, m, list(pages_text), pdf_path, vision),
+        call_detect, parsers, bundled, fall_through,
+    )
+    if read.error is not None:
         message, diagnostic = parser_common.parser_failure(
-            module, e, "pdf", input_stats, "\n".join(pages_text)
+            read.module, read.error, "pdf", input_stats, "\n".join(pages_text)
         )
-        print(json.dumps({"error": message, "diagnostic": diagnostic}))
+        out = {"error": message, "diagnostic": diagnostic}
+        if read.failed:
+            out["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+        print(json.dumps(out))
         sys.exit(1)
+    module, result = read.module, read.result
     try:
         result = parser_common.finish_parse(result, module, adjust)
     except ValueError as e:
@@ -326,6 +352,9 @@ def main() -> None:
 
     result["detected"] = True
     result.setdefault("needsVisionOcr", False)
+    if read.failed:
+        # Read by a parser after them: the app names them to the user.
+        result["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
     _attach_shadow_warning(result, module, only_extra_parser)
     print(json.dumps(result))
 

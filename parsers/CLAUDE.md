@@ -84,7 +84,10 @@ Copy the bundled module to `~/.orbysystems/ingest/parsers/<same-name>.py`, edit
 it there. A same-named file in that directory *replaces* the bundled
 module at its original position in the try order
 (`parser_common.merge_parsers`). A differently-named file is a new
-parser, tried after all bundled ones.
+parser, tried after all bundled ones. A dropped-in file that claims a
+statement and then fails is passed over, as if it weren't installed, so a
+half-finished edit gives way to the bundled module it replaces. The
+dispatcher names it under `failedExtraParsers` (CONTRACT.md).
 
 Name matching here is `-`/`_` insensitive (`parser_common.parser_name_key`):
 a parser built locally by OrbySystems' Build Transactions Extractor is
