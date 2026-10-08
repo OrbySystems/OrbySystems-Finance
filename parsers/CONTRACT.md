@@ -26,6 +26,22 @@ raised whenever the parser changes. A failure's diagnostic reports it as
 `parserRevision`, so a report says which revision ran. A dropped-in
 parser's revision is not reported.
 
+**A dropped-in parser that claims a document and then fails is passed
+over** (`parser_common.read_claimed`). The document is read as if that file
+weren't installed: the bundled parser it replaced, if any, claims it in its
+slot, then the parsers after it, and the first match reads it. The
+dispatcher lists every drop-in it passed over under `failedExtraParsers`,
+beside the diagnostic and never inside it:
+`[{"file": "<name>.py", "code": ..., "stage": ...}]`. The list appears on a
+successful read and on a failure, and the file name is the user's own. When
+nothing after the drop-in claims the document, the failure is the drop-in's.
+
+A bundled parser that fails still ends the read, because the parsers after
+it are less specific readings. For example, `bofa_checking`'s `detect()`
+also claims the combined statements `bofa_checking_combined` reads.
+Nothing is passed over when one parser is asked for, with
+`--expected-parser` or `--only-extra-parser`.
+
 ## `detect()`
 
 | dispatcher | signature |

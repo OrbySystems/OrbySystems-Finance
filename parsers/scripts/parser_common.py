@@ -29,6 +29,7 @@ given file is - see _detect's docstring.
 """
 
 import contextlib
+import dataclasses
 import glob
 import importlib
 import importlib.util
@@ -499,7 +500,15 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     tier = module_support_tier(module)
     code, stage = _classify_parser_error(error)
     reference = f"{parser_id.replace('_', '-').upper()}-{code.removeprefix('PARSER_')}"
-    if tier == SUPPORT_TIER_UNTESTED:
+    if not bundled:
+        # The dispatcher names its file beside this, under
+        # "failedExtraParsers" (failed_extra_parsers), never in it: the
+        # message is part of the diagnostic, which may be reported.
+        message = (
+            f"A parser in your parsers folder claimed this statement but could not read it. "
+            f"No data was imported. Error reference: {reference}."
+        )
+    elif tier == SUPPORT_TIER_UNTESTED:
         message = (
             f"OrbySystems recognized this as {institution}, but that format has not been "
             f"confirmed on real statements yet, and this one did not read cleanly. No data was "
@@ -1288,3 +1297,104 @@ def detect(call_detect, parsers):
             return module, reason
         misses.append(f"{module.__name__.rsplit('.', 1)[-1]}: {reason}")
     return None, "; ".join(misses)
+
+
+# --- reading a claimed document, past a broken drop-in. The first parser
+# whose detect() claims a document reads it. An extra parser - a file the
+# user dropped in, or a build installed there - that claims it and then
+# fails is passed over: the document is read as if that file weren't
+# installed. Without this, one half-written drop-in claiming a statement
+# stopped it importing although another parser read it (orby-core's
+# checklist C6a). A bundled parser that fails still ends the read. ---
+
+
+def is_bundled(module) -> bool:
+    """Whether module is one of this repository's own parsers rather than
+    an extra parser from the parsers directory (load_extra_parsers)."""
+    return module.__name__.startswith(("institutions.", "csv_institutions."))
+
+
+def replaced_bundled(bundled: list, module):
+    """The bundled parser that module, an extra parser, took the place of
+    in merge_parsers (the same parser_name_key), or None."""
+    if module is None or is_bundled(module):
+        return None
+    key = parser_name_key(module.__name__)
+    for b in bundled:
+        if parser_name_key(b.__name__) == key:
+            return b
+    return None
+
+
+def after_failed_extra(parsers: list, module, bundled: list) -> list:
+    """The try list after module, an extra parser that claimed the document
+    and failed reading it: the rest of parsers as if module weren't
+    installed - the bundled parser it took the place of back in its slot,
+    then the parsers after it."""
+    rest = parsers[parsers.index(module) + 1:]
+    replaced = replaced_bundled(bundled, module)
+    if replaced is not None and replaced not in rest:
+        rest = [replaced] + rest
+    return rest
+
+
+@dataclasses.dataclass
+class Read:
+    """What read_claimed came to. module and result are the parser that read
+    the document and what it read; or module and error are the parser whose
+    failure ended the read. failed lists each extra parser that claimed the
+    document and failed, as (module, error), including the one the read
+    ended on, when it was one."""
+
+    module: object
+    result: dict | None = None
+    error: Exception | None = None
+    failed: list = dataclasses.field(default_factory=list)
+
+
+def read_claimed(module, call_parse, call_detect, parsers: list, bundled: list, fall_through: bool = True) -> Read:
+    """Reads the document with module - the first parser in parsers whose
+    detect() claimed it (see detect) - via call_parse(module), which parses
+    and validates.
+
+    An extra parser that fails is passed over when fall_through is set: the
+    rest of the try list is read as if that file weren't installed
+    (after_failed_extra), so the bundled parser it took the place of claims
+    the document in its slot, then the parsers after it, the first to claim
+    it reading it. When none does, the read ends on that extra parser's
+    failure. A bundled parser that fails ends the read either way: the
+    parsers after it in the try order (PRIORITY, then name) are less
+    specific readings - bofa_checking's detect() also claims a BofA combined
+    statement, and would read every account as one.
+
+    A dispatcher turns fall_through off when it is asked for one parser
+    (--expected-parser, --only-extra-parser): that parser's failure is the
+    answer.
+    """
+    failed = []
+    while True:
+        try:
+            return Read(module=module, result=call_parse(module), failed=failed)
+        except Exception as e:  # noqa: BLE001
+            if not fall_through or is_bundled(module):
+                return Read(module=module, error=e, failed=failed)
+            failed.append((module, e))
+            parsers = after_failed_extra(parsers, module, bundled)
+            following, _ = detect(call_detect, parsers)
+            if following is None:
+                return Read(module=module, error=e, failed=failed)
+            module = following
+
+
+def failed_extra_parsers(failed: list) -> list[dict]:
+    """The extra parsers a read passed over (Read.failed), as a dispatcher
+    reports them under "failedExtraParsers": each one's file name in the
+    parsers directory, and the code and stage of its failure
+    (_classify_parser_error), never its exception. The file name is the
+    user's own, so it is kept out of every diagnostic, and the app keeps it
+    on the user's computer."""
+    out = []
+    for module, error in failed:
+        code, stage = _classify_parser_error(error)
+        out.append({"file": module.__name__.rsplit(".", 1)[-1] + ".py", "code": code, "stage": stage})
+    return out

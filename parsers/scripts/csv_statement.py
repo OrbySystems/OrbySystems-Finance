@@ -111,7 +111,9 @@ csv_institutions/ packages) is already on sys.path. This execution is
 sandboxed - see CLAUDE.md's "Adding a parser without touching this
 repo" for exactly what that means and its limitations (no network
 access, no arbitrary filesystem access, no per-plugin dependency
-installation).
+installation). A dropped-in parser that claims an export and then fails
+is passed over, and named under "failedExtraParsers", exactly as in
+bank_statement.py (see its docstring and parser_common.read_claimed).
 
 --kind (bank or brokerage), used internally by pkg/ingest when a caller
 forces DocTypeBank/DocTypeBrokerage, restricts the try list to modules
@@ -126,6 +128,7 @@ detect() instead picks a different module (or nothing at all), this
 prints {"error": ...} and exits 1 rather than proceeding to that other
 module's parse() (see parser_common.check_expected_parser and
 bank_statement.py's own --expected-parser doc for the full rationale).
+No parser is passed over in this mode, or with --only-extra-parser.
 """
 
 import contextlib
@@ -296,8 +299,13 @@ def main() -> None:
 
     extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "csv", only_extra_parser)
     parsers = extra_parsers if only_extra_parser else parser_common.merge_parsers(_PARSERS, extra_parsers)
+    bundled = [] if only_extra_parser else _PARSERS
     if kind_filter:
         parsers = [m for m in parsers if parser_common.module_kind(m) == kind_filter]
+        bundled = [m for m in bundled if parser_common.module_kind(m) == kind_filter]
+    # A drop-in that claims the export and fails is passed over
+    # (parser_common.read_claimed) - unless one named parser is asked for.
+    fall_through = not (expected_parser or only_extra_parser)
 
     try:
         header, sample_rows = _read_header_and_sample(csv_path)
@@ -305,9 +313,10 @@ def main() -> None:
         print(json.dumps({"error": f"failed to read the export: {e}"}))
         sys.exit(1)
 
-    module, reason = parser_common.detect(
-        lambda m: _without_parser_stdout(m.detect, header, sample_rows), parsers
-    )
+    def call_detect(m):
+        return _without_parser_stdout(m.detect, header, sample_rows)
+
+    module, reason = parser_common.detect(call_detect, parsers)
     if msg := parser_common.check_expected_parser(module, reason, expected_parser):
         print(json.dumps({"error": msg}))
         sys.exit(1)
@@ -324,22 +333,30 @@ def main() -> None:
         }))
         return
 
-    rows = None
+    input_format = "xlsx" if csv_path.lower().endswith(".xlsx") else "csv"
+    input_stats = {"columnCount": len(header)}
     try:
         rows = _read_rows(csv_path, header)
-        result = _without_parser_stdout(_parse_matched, module, rows, csv_path)
     except Exception as e:  # noqa: BLE001
-        input_stats = {"columnCount": len(header)}
-        if rows is not None:
-            input_stats["rowCount"] = len(rows)
-        message, diagnostic = parser_common.parser_failure(
-            module,
-            e,
-            "xlsx" if csv_path.lower().endswith(".xlsx") else "csv",
-            input_stats,
-        )
+        message, diagnostic = parser_common.parser_failure(module, e, input_format, input_stats)
         print(json.dumps({"error": message, "diagnostic": diagnostic}))
         sys.exit(1)
+    input_stats["rowCount"] = len(rows)
+    # Each parser gets its own copy of the rows: one that fails after
+    # changing them must not hand the parser after it a different export.
+    read = parser_common.read_claimed(
+        module,
+        lambda m: _without_parser_stdout(_parse_matched, m, [dict(r) for r in rows], csv_path),
+        call_detect, parsers, bundled, fall_through,
+    )
+    if read.error is not None:
+        message, diagnostic = parser_common.parser_failure(read.module, read.error, input_format, input_stats)
+        out = {"error": message, "diagnostic": diagnostic}
+        if read.failed:
+            out["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+        print(json.dumps(out))
+        sys.exit(1)
+    module, result = read.module, read.result
     try:
         result = parser_common.finish_parse(result, module, adjust)
     except ValueError as e:
@@ -348,6 +365,9 @@ def main() -> None:
 
     result["detected"] = True
     result.setdefault("needsVisionOcr", False)
+    if read.failed:
+        # Read by a parser after them: the app names them to the user.
+        result["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
     if not only_extra_parser:
         shadowed = parser_common.bundled_shadow_of(_PARSERS, module)
         if shadowed:
