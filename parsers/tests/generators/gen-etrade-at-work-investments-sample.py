@@ -1,14 +1,35 @@
 #!/usr/bin/env python3
-"""Generate a fictional E*TRADE at Work holdings/activity statement."""
+"""Generate a fictional E*TRADE at Work holdings/activity statement.
 
+The CASH FLOW ACTIVITY BY DATE amounts and NET CREDITS/(DEBITS) are drawn
+right-aligned in one Credits/(Debits) column, as a real statement prints
+them: the Statement Scrambler finds a total's rows by that column, and
+keeps NET = the rows only when they line up. The page text pdfplumber
+reads is the same either way.
+"""
+
+import re
 from pathlib import Path
+
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 OUT = Path(__file__).resolve().parent.parent / "fixtures" / "etrade-at-work-investments-synthetic-202608.pdf"
 PAGE_W, PAGE_H = 792, 612
+# The right edge of the Credits/(Debits) column.
+AMOUNT_RIGHT = 520.0
+# A cash-flow row ("8/05 Deposit ... $500.00") or the NET line: the label,
+# then the amount that goes in the column.
+_COLUMN_AMOUNT_RE = re.compile(
+    r"^(?P<label>\d{1,2}/\d{2} .*?|NET CREDITS/\(DEBITS\)) (?P<amount>\$\(?[\d,]+\.\d{2}\)?)$"
+)
 
 
 def _escape(value: str) -> bytes:
     return value.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)").encode("latin-1")
+
+
+def _text(x: str, y: int, value: str) -> bytes:
+    return f"BT /F1 8 Tf 1 0 0 1 {x} {y} Tm (".encode() + _escape(value) + b") Tj ET\n"
 
 
 def _pdf(pages: list[list[str]]) -> bytes:
@@ -30,7 +51,14 @@ def _pdf(pages: list[list[str]]) -> bytes:
         stream = bytearray()
         y = PAGE_H - 35
         for line in lines:
-            stream.extend(f"BT /F1 8 Tf 1 0 0 1 30 {y} Tm (".encode() + _escape(line) + b") Tj ET\n")
+            column = _COLUMN_AMOUNT_RE.match(line)
+            if column:
+                amount = column.group("amount")
+                stream.extend(_text("30", y, column.group("label")))
+                x = AMOUNT_RIGHT - stringWidth(amount, "Helvetica", 8)
+                stream.extend(_text(f"{x:.2f}", y, amount))
+            else:
+                stream.extend(_text("30", y, line))
             y -= 13
         add(content_no, f"<< /Length {len(stream)} >>\nstream\n".encode() + stream + b"endstream")
     xref = len(out)

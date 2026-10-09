@@ -42,7 +42,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
 endobj
 9 0 obj
-<< /Length 1445 >>
+<< /Length 1613 >>
 stream
 BT /F1 8 Tf 1 0 0 1 30 577 Tm (CLIENT STATEMENT For the Period August 1- August 31, 2026) Tj ET
 BT /F1 8 Tf 1 0 0 1 30 564 Tm (Account Detail 999-111111-2468 TEST ACCOUNT) Tj ET
@@ -57,10 +57,14 @@ BT /F1 8 Tf 1 0 0 1 30 460 Tm (ACTIVITY) Tj ET
 BT /F1 8 Tf 1 0 0 1 30 447 Tm (CASH FLOW ACTIVITY BY DATE) Tj ET
 BT /F1 8 Tf 1 0 0 1 30 434 Tm (Activity Settlement) Tj ET
 BT /F1 8 Tf 1 0 0 1 30 421 Tm (Date Date Activity Type Description Comments Quantity Price Credits/\(Debits\)) Tj ET
-BT /F1 8 Tf 1 0 0 1 30 408 Tm (8/05 Deposit EXTERNAL CASH CONTRIBUTION $500.00) Tj ET
-BT /F1 8 Tf 1 0 0 1 30 395 Tm (8/10 Withdrawal CASH DISTRIBUTION $\(200.00\)) Tj ET
-BT /F1 8 Tf 1 0 0 1 30 382 Tm (8/28 Qualified Dividend ACM ACME CORPORATION $100.00) Tj ET
-BT /F1 8 Tf 1 0 0 1 30 369 Tm (NET CREDITS/\(DEBITS\) $400.00) Tj ET
+BT /F1 8 Tf 1 0 0 1 30 408 Tm (8/05 Deposit EXTERNAL CASH CONTRIBUTION) Tj ET
+BT /F1 8 Tf 1 0 0 1 491.09 408 Tm ($500.00) Tj ET
+BT /F1 8 Tf 1 0 0 1 30 395 Tm (8/10 Withdrawal CASH DISTRIBUTION) Tj ET
+BT /F1 8 Tf 1 0 0 1 485.76 395 Tm ($\(200.00\)) Tj ET
+BT /F1 8 Tf 1 0 0 1 30 382 Tm (8/28 Qualified Dividend ACM ACME CORPORATION) Tj ET
+BT /F1 8 Tf 1 0 0 1 491.09 382 Tm ($100.00) Tj ET
+BT /F1 8 Tf 1 0 0 1 30 369 Tm (NET CREDITS/\(DEBITS\)) Tj ET
+BT /F1 8 Tf 1 0 0 1 491.09 369 Tm ($400.00) Tj ET
 BT /F1 8 Tf 1 0 0 1 30 356 Tm (MONEY MARKET FUND \(MMF\) AND BANK DEPOSIT PROGRAM ACTIVITY) Tj ET
 endstream
 endobj
@@ -79,5 +83,5 @@ xref
 trailer
 << /Size 10 /Root 1 0 R >>
 startxref
-3275
+3443
 %%EOF

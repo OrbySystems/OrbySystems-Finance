@@ -31,6 +31,14 @@ def test_new_investment_fixture_generators_are_byte_deterministic(tmp_path) -> N
         ),
         (
             _load_generator(
+                "gen-etrade-client-statement-sample.py",
+                "etrade_client_statement_fixture_generator",
+            ),
+            "build",
+            "etrade-client-statement-synthetic-202607",
+        ),
+        (
+            _load_generator(
                 "gen-edward-jones-brokerage-synthetic-sample.py",
                 "edward_jones_fixture_generator",
             ),

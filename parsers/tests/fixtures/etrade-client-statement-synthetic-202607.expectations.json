@@ -1,0 +1,140 @@
+{
+  "file": "etrade-client-statement-synthetic-202607.pdf",
+  "institution": "E*TRADE from Morgan Stanley",
+  "statementDate": "2026-07-31",
+  "account": "9318",
+  "accountType": "Brokerage",
+  "providerAccountId": "731-406259-318",
+  "endingValue": 71839.0,
+  "holdings": [
+    {
+      "symbol": "CASH",
+      "type": "Cash",
+      "current_value": 1382.5
+    },
+    {
+      "symbol": "HBVS",
+      "type": "Stock",
+      "quantity": 200.0,
+      "current_value": 28470.0,
+      "cost_basis_total": 21460.0
+    },
+    {
+      "symbol": "LKMC",
+      "type": "Stock",
+      "quantity": 300.0,
+      "current_value": 17436.0,
+      "cost_basis_total": 15912.0
+    },
+    {
+      "symbol": "QFEC",
+      "type": "Stock",
+      "quantity": 100.0,
+      "current_value": 4164.0,
+      "cost_basis_total": 3700.0
+    },
+    {
+      "symbol": "NGFD",
+      "type": "Stock",
+      "quantity": 80.0,
+      "current_value": 2712.0,
+      "cost_basis_total": 2480.0
+    },
+    {
+      "symbol": "HBVS260821C150",
+      "type": "Options",
+      "quantity": -2.0,
+      "current_value": -285.0,
+      "cost_basis_total": -628.66
+    },
+    {
+      "symbol": "LKMC260821C62.5",
+      "type": "Options",
+      "quantity": -3.0,
+      "current_value": -252.0,
+      "cost_basis_total": -327.99
+    },
+    {
+      "symbol": "EXTM",
+      "type": "ETF",
+      "quantity": 150.0,
+      "current_value": 14472.0,
+      "cost_basis_total": 12150.0
+    },
+    {
+      "symbol": "EXQG",
+      "type": "ETF",
+      "quantity": 75.0,
+      "current_value": 3739.5,
+      "cost_basis_total": 3700.5
+    }
+  ],
+  "transactions": [
+    {
+      "date": "2026-07-14",
+      "action": "Sold",
+      "transaction_type": "sell",
+      "symbol": "HBVS260821C150",
+      "amount": 628.66,
+      "quantity": -2.0
+    },
+    {
+      "date": "2026-07-15",
+      "action": "Qualified Dividend",
+      "transaction_type": "dividend",
+      "symbol": "LKMC",
+      "amount": 144.0
+    },
+    {
+      "date": "2026-07-22",
+      "action": "Bought",
+      "transaction_type": "buy",
+      "symbol": "EXQG",
+      "amount": -1245.5,
+      "quantity": 25.0
+    },
+    {
+      "date": "2026-07-30",
+      "action": "Dividend",
+      "transaction_type": "dividend",
+      "symbol": "EXQG",
+      "amount": 7.75
+    },
+    {
+      "date": "2026-07-31",
+      "action": "Interest Income",
+      "transaction_type": "interest",
+      "symbol": "",
+      "amount": 0.42
+    },
+    {
+      "date": "2026-07-17",
+      "action": "Option Expired",
+      "transaction_type": "corporate_action",
+      "subtype": "Out",
+      "symbol": "QFEC260717C45",
+      "quantity": 1.0,
+      "amount": 0.0
+    }
+  ],
+  "checks": [
+    {
+      "kind": "sum",
+      "label": "Credits/Debits",
+      "expected": 0.0
+    },
+    {
+      "kind": "sum",
+      "label": "CASH FLOW ACTIVITY BY DATE",
+      "expected": -464.67
+    },
+    {
+      "kind": "unread",
+      "label": "CASH FLOW ACTIVITY BY DATE"
+    },
+    {
+      "kind": "unread",
+      "label": "TRANSFERS, CORPORATE ACTIONS AND ADDITIONAL ACTIVITY"
+    }
+  ]
+}

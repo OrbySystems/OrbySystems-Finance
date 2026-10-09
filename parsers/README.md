@@ -42,7 +42,7 @@ README_addparser.md has every parser's tier, generated from its Go catalog.
 | J.P. Morgan Wealth Management / Self-Directed Investing | **Untested** | Investment statement family, distinct from Chase banking and credit-card statements |
 | Morgan Stanley Global Stock Plan Services | **Untested** | Participant share purchase quarterly statement with releases, sales, and proceeds disbursements; validated against one 2021 statement |
 | Morgan Stanley Wealth Management | **Untested** | Wealth Management client statement, distinct from E*TRADE |
-| E*TRADE from Morgan Stanley | **Provisional** | Morgan Stanley at Work client statements with cash, stock and ETF holdings plus itemized cash-flow activity; additional security and activity variants remain provisional |
+| E*TRADE from Morgan Stanley | **Provisional** | CLIENT STATEMENT layout (E*TRADE and Morgan Stanley at Work accounts, one or several per statement), rebuilt from a scrambled real statement: cash and bank deposit program, common stocks, options (short calls with OCC codes), ETFs and closed-end funds, with mutual-fund, fixed-income and preferred sections read by shape; cash-flow activity including option sells to open and option expirations/assignments as corporate actions, security transfers and card/check rows; statement checks for credits/debits, the cash-flow table, card/check rows and security transfers. Demo statement: `etrade-client-statement-synthetic-202607.pdf` |
 | Wells Fargo Advisors / WellsTrade | **Untested** | Investment statement family, distinct from Wells Fargo checking statements |
 | Edward Jones | **Untested** | Retail brokerage statement |
 | Raymond James | **Untested** | Comprehensive statement; Executive Overview remains unsupported |

@@ -72,7 +72,7 @@ def test_at_work_nonzero_activity_fails_instead_of_silently_dropping_rows() -> N
         {"pageCount": 1, "textPageCount": 1},
         pages[0],
     )
-    assert diagnostic["parserRevision"] == 3
+    assert diagnostic["parserRevision"] == 5
     assert diagnostic["signals"]["credits"] is True
     assert diagnostic["counts"]["holdingsParsed"] == 1
     assert "$" not in json.dumps(diagnostic)
@@ -119,3 +119,56 @@ def test_at_work_redacted_cover_still_detects_and_numeric_period_parses() -> Non
     )
     assert start.isoformat() == "2026-08-01"
     assert end.isoformat() == "2026-08-31"
+
+
+CLIENT_STATEMENT_EXPECTATIONS = FIXTURES / "etrade-client-statement-synthetic-202607.expectations.json"
+
+
+def test_client_statement_demo_end_to_end(run_statement) -> None:
+    """The Client Statement layout's demo statement
+    (tests/generators/gen-etrade-client-statement-sample.py): every holding
+    and row, the OCC codes, the signs, and the statement's own checks."""
+    want = json.loads(CLIENT_STATEMENT_EXPECTATIONS.read_text(encoding="utf-8"))
+    stmt = run_statement(want["file"], "--expected-parser", "etrade_brokerage.py")
+    assert stmt.institution == want["institution"]
+    assert stmt.statement_date == want["statementDate"]
+    assert stmt.transactions == []
+
+    rows = stmt.brokerage_holdings + stmt.brokerage_transactions
+    assert {row["account"] for row in rows} == {want["account"]}
+    assert {row["accountType"] for row in rows} == {want["accountType"]}
+    assert {row["provider_account_id"] for row in rows} == {want["providerAccountId"]}
+
+    holdings = [{key: row.get(key) for key in expected} for row, expected in
+                zip(stmt.brokerage_holdings, want["holdings"])]
+    assert holdings == want["holdings"]
+    assert len(stmt.brokerage_holdings) == len(want["holdings"])
+    assert approx(sum(row["current_value"] for row in stmt.brokerage_holdings), want["endingValue"])
+    cash = stmt.brokerage_holdings[0]
+    assert cash["is_cash_equivalent"] is True
+
+    transactions = [{key: row.get(key, "" if key == "symbol" else None) for key in expected}
+                    for row, expected in zip(stmt.brokerage_transactions, want["transactions"])]
+    assert transactions == want["transactions"]
+    assert len(stmt.brokerage_transactions) == len(want["transactions"])
+
+    # Options: OCC codes on the short calls and on every row that trades or
+    # closes one; written contracts are held negative, sold ones leave.
+    options = [row for row in stmt.brokerage_holdings if row["type"] == "Options"]
+    assert options and all(row["quantity"] < 0 for row in options)
+    option_rows = [row for row in stmt.brokerage_transactions if "CALL" in row["description"]]
+    assert len(option_rows) == 2
+    for row in options + option_rows:
+        assert parser_common.OCC_SYMBOL.match(row["symbol"]), row
+    assert all(row["quantity"] < 0 for row in stmt.brokerage_transactions if row["transaction_type"] == "sell")
+    expired = [row for row in stmt.brokerage_transactions if row["action"] == "Option Expired"]
+    assert [(row["transaction_type"], row["subtype"], row["amount"]) for row in expired] == [
+        ("corporate_action", "Out", 0.0)
+    ]
+
+    results = stmt.raw["checkResults"]
+    assert [(c["kind"], c["label"]) for c in results] == [(c["kind"], c["label"]) for c in want["checks"]]
+    assert all(c["ok"] for c in results), results
+    for result, expected in zip(results, want["checks"]):
+        if "expected" in expected:
+            assert approx(result["expected"], expected["expected"])
