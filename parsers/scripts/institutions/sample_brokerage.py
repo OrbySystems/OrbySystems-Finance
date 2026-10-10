@@ -30,7 +30,7 @@ test PDF text-extraction quirks the way the bank parsers' fixtures do):
 import parser_common
 import re
 
-from . import common
+from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 

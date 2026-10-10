@@ -2,7 +2,7 @@
 (looks_like_header_row / grid_header_and_rows), used by csv_statement.py
 for both the CSV and .xlsx paths.
 
-Run:  ~/.orbysystems/ingest/venv/bin/python3 -m unittest discover -s test -p '*_test.py'
+Run:  make test  (or  .venv/bin/python -m pytest tests/test_parser_common_helpers.py)
 """
 
 import os

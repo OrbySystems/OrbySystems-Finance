@@ -141,8 +141,8 @@ import pdfplumber
 
 import parser_common
 
-from . import common
-from . import diagnostic_helpers
+from institutions import common
+from institutions import diagnostic_helpers
 
 KIND = parser_common.KIND_BROKERAGE
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED

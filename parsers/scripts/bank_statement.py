@@ -138,6 +138,19 @@ one passed over under "failedExtraParsers" - its file name, and its
 failure's code and stage - outside the diagnostic, since the file name
 is the user's own. A bundled parser that fails still ends the import.
 
+A dropped-in file that fails to load at all - a syntax error, a relative
+import, no detect()/parse() - is skipped, and a bundled parser of its
+name goes on reading statements in its place. Every read (a match, a
+failure, "not detected") names each such file under
+"unloadedExtraParsers", with a code for why (parser_common.
+unloaded_extra_parsers), so the app can tell the user their parser isn't
+running. --check-extra-parsers reports just that, for every file in the
+folder, and reads nothing: Manage Parsers asks it which files load. When
+the parser --expected-parser or --only-extra-parser names is one that
+doesn't load, the read fails at once, with a stage "load" diagnostic and
+the error itself in the message (parser_common.
+expected_parser_not_loaded): it was never tried.
+
 <orbySystemsDir>/ingest/parsers/ is shared with csv_statement.py's own
 --extra-parsers-dir - a CSV-shaped detect()/parse() module dropped there
 is simply never matched by this dispatcher (its detect() gets called
@@ -253,7 +266,24 @@ def _parse_matched(module, pages_text: list[str], pdf_path: str, vision: dict | 
     return result
 
 
+def _check_extra_parsers(extra_parsers_dir: str | None) -> None:
+    """Prints which files in the parsers folder fail to load, and why,
+    reading nothing (--check-extra-parsers). A CSV parser loads here as it
+    does in csv_statement.py, so one look covers the folder; "replaces"
+    names a bundled parser of either kind."""
+    import csv_institutions
+
+    unloaded = []
+    parser_common.load_extra_parsers(extra_parsers_dir, "pdf", unloaded=unloaded)
+    bundled = _PARSERS + parser_common.discover_parsers(csv_institutions)
+    print(json.dumps({"unloadedExtraParsers": parser_common.unloaded_extra_parsers(unloaded, bundled)}))
+
+
 def main() -> None:
+    if "--check-extra-parsers" in sys.argv[1:]:
+        _, extra_parsers_dir = _pop_flag_value(sys.argv[1:], "--extra-parsers-dir")
+        _check_extra_parsers(extra_parsers_dir)
+        return
     argv = [a for a in sys.argv[1:] if a != "--dump-text"]
     argv, vision_endpoint = _pop_flag_value(argv, "--vision-endpoint")
     argv, vision_model = _pop_flag_value(argv, "--vision-model")
@@ -281,7 +311,14 @@ def main() -> None:
         _dump_text(pdf_path)
         return
 
-    extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "pdf", only_extra_parser)
+    unloaded = []
+    extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "pdf", only_extra_parser, unloaded)
+    # Files in the parsers folder that don't load, named on every read.
+    unloaded_report = parser_common.unloaded_extra_parsers(unloaded, _PARSERS)
+    if not_loaded := parser_common.expected_parser_not_loaded(expected_parser or only_extra_parser, unloaded, "pdf"):
+        message, diagnostic = not_loaded
+        print(json.dumps({"error": message, "diagnostic": diagnostic, "unloadedExtraParsers": unloaded_report}))
+        sys.exit(1)
     parsers = extra_parsers if only_extra_parser else parser_common.merge_parsers(_PARSERS, extra_parsers)
     bundled = [] if only_extra_parser else _PARSERS
     if kind_filter:
@@ -313,11 +350,14 @@ def main() -> None:
             if module is None:
                 if extra_misses:
                     reason = "; ".join([reason] + extra_misses) if reason else "; ".join(extra_misses)
-                print(json.dumps({
+                out = {
                     "detected": False,
                     "reason": reason,
                     "diagnostic": parser_common.unsupported_format_diagnostic("pdf", input_stats, head_text),
-                }))
+                }
+                if unloaded_report:
+                    out["unloadedExtraParsers"] = unloaded_report
+                print(json.dumps(out))
                 return
 
             tail_text = [p.extract_text() or "" for p in pdf.pages[_DETECT_PAGE_COUNT:]]
@@ -341,6 +381,8 @@ def main() -> None:
         out = {"error": message, "diagnostic": diagnostic}
         if read.failed:
             out["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+        if unloaded_report:
+            out["unloadedExtraParsers"] = unloaded_report
         print(json.dumps(out))
         sys.exit(1)
     module, result = read.module, read.result
@@ -355,6 +397,8 @@ def main() -> None:
     if read.failed:
         # Read by a parser after them: the app names them to the user.
         result["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+    if unloaded_report:
+        result["unloadedExtraParsers"] = unloaded_report
     _attach_shadow_warning(result, module, only_extra_parser)
     print(json.dumps(result))
 
