@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import parser_common
 
-from . import provisional_brokerage_common as core
+from institutions import provisional_brokerage_common as core
 
 
 KIND = core.KIND

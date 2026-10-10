@@ -42,6 +42,27 @@ also claims the combined statements `bofa_checking_combined` reads.
 Nothing is passed over when one parser is asked for, with
 `--expected-parser` or `--only-extra-parser`.
 
+**A dropped-in file that doesn't load is named too.** A syntax error, a
+relative import, a module the sandbox doesn't have, `@dataclass`, or no
+`detect()`/`parse()` pair: the file is skipped, and a bundled parser of its
+name goes on reading in its place. Every read lists such files - on a
+match, on a failure and when nothing was detected - under
+`unloadedExtraParsers`, beside the diagnostic and never inside it:
+`[{"file": "<name>.py", "code": "PARSER_LOAD_...", "stage": "load", ...}]`.
+`code` is `PARSER_LOAD_SYNTAX`, `PARSER_LOAD_RELATIVE_IMPORT`,
+`PARSER_LOAD_MISSING_MODULE`, `PARSER_LOAD_IMPORT`, `PARSER_LOAD_DATACLASS`,
+`PARSER_LOAD_NO_DETECT_PARSE` or `PARSER_LOAD_ERROR`. Where known, `line`
+is the line in the file, `module` the module it could not import, `error`
+the exception's class, and `replaces` the bundled parser reading in its
+place. The exception's text is never in it.
+
+`bank_statement.py --check-extra-parsers --extra-parsers-dir <dir>` prints
+just that list for the whole folder, and reads nothing. When the parser
+`--expected-parser` or `--only-extra-parser` names is one that doesn't
+load, the read fails at once, before anything is detected: the diagnostic
+has `stage: "load"` and `parserId: "external_parser"`, and the message,
+for whoever is building or trying the file, quotes the error.
+
 ## `detect()`
 
 | dispatcher | signature |
@@ -305,5 +326,7 @@ negated convention.
 `accountType` on every row that has none (the usual single-account
 statement); and `classify_account_type`, which turns an account title or
 product name into the label OrbySystems uses (`Checking`, `Roth IRA`,
-`HSA`, …), or a default you pass. Import from a `csv_institutions/` module
-too with `from institutions import common`.
+`HSA`, …), or a default you pass. Import it as `from institutions import
+common`, from a `csv_institutions/` module too — never `from . import
+common`, which fails when the module is loaded from the user's parsers
+folder (CLAUDE.md).

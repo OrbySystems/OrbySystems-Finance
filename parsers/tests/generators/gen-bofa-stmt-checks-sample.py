@@ -23,10 +23,9 @@ images occupy (see check_ocr._MIN_CHECK_IMAGE_AREA_FRACTION) - close
 enough to exercise the image-area-based page detection, even though the
 real format this is modeled on may differ in exact proportions/DPI.
 
-Regenerate with:  python3 test/gen-bofa-stmt-checks-sample.py
-(needs Pillow - use the ingest venv's python, e.g.
-~/.orbysystems/ingest/venv/bin/python3, which already has it as a pikepdf
-dependency)
+Regenerate with:  make regen-fixtures  (or  .venv/bin/python
+tests/generators/gen-bofa-stmt-checks-sample.py; it needs Pillow, which
+the test venv has)
 """
 
 import io

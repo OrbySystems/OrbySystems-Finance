@@ -33,7 +33,7 @@ from datetime import datetime
 
 import pdfplumber
 
-from . import bofa_checking, check_ocr, common
+from institutions import bofa_checking, check_ocr, common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 

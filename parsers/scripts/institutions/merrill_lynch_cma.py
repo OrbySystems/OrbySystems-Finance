@@ -20,7 +20,7 @@ from datetime import date, datetime
 
 import parser_common
 
-from . import common
+from institutions import common
 
 KIND = parser_common.KIND_BROKERAGE
 SUPPORT_TIER = parser_common.SUPPORT_TIER_UNTESTED
