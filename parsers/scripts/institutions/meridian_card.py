@@ -39,7 +39,7 @@ has already proved the rows were read correctly.
 import parser_common
 import re
 
-from . import common
+from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_DEMO
 

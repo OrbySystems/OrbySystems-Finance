@@ -38,6 +38,7 @@ import json
 import os
 import pkgutil
 import re
+import traceback
 
 import statement_checks
 
@@ -1067,7 +1068,8 @@ def parse_adjust_flag(raw: str | None) -> dict | None:
     return adjust
 
 
-def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name: str | None = None):
+def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name: str | None = None,
+                       unloaded: list | None = None):
     """Dynamically loads *.py files in extra_parsers_dir (sorted for
     determinism), or only only_name when provided, as dispatcher-style
     parser modules, so a user can add
@@ -1095,6 +1097,12 @@ def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name
     contains the institutions/ package alongside it - see pyruntime.go's
     writeScripts) is already on sys.path[0] as the running script's
     directory.
+
+    unloaded, when given, collects (file name, path, exception) for each
+    file that failed to load, for unloaded_extra_parsers to report and
+    expected_parser_not_loaded to answer with: a file that doesn't load is
+    otherwise passed over without a word, and a same-named bundled parser
+    goes on reading statements in its place.
     """
     modules = []
     misses = []
@@ -1123,13 +1131,125 @@ def load_extra_parsers(extra_parsers_dir: str | None, loader_tag: str, only_name
             with contextlib.redirect_stdout(io.StringIO()):
                 spec.loader.exec_module(module)
             if not (hasattr(module, "detect") and hasattr(module, "parse")):
-                raise AttributeError("module must define detect(...) and parse(...)")
+                raise _NoDetectParse("module must define detect(...) and parse(...)")
         except Exception as e:  # noqa: BLE001
             misses.append(f"{name}: failed to load: {e}")
+            if unloaded is not None:
+                unloaded.append((name, path, e))
             continue
         module.__name__ = name[:-3]  # so _detect's misses list reports the filename (minus .py), not the synthetic loader name
         modules.append(module)
     return modules, misses
+
+
+class _NoDetectParse(AttributeError):
+    """A file in the parsers folder that loads but has no detect()/parse()
+    pair to dispatch to."""
+
+
+# How a file in the parsers folder failed to load, as a dispatcher reports it
+# under "unloadedExtraParsers" (CONTRACT.md).
+LOAD_SYNTAX = "PARSER_LOAD_SYNTAX"
+LOAD_RELATIVE_IMPORT = "PARSER_LOAD_RELATIVE_IMPORT"
+LOAD_MISSING_MODULE = "PARSER_LOAD_MISSING_MODULE"
+LOAD_IMPORT = "PARSER_LOAD_IMPORT"
+LOAD_DATACLASS = "PARSER_LOAD_DATACLASS"
+LOAD_NO_DETECT_PARSE = "PARSER_LOAD_NO_DETECT_PARSE"
+LOAD_ERROR = "PARSER_LOAD_ERROR"
+
+_MODULE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]{0,79}$")
+
+
+def _classify_load_error(error: Exception, path: str) -> tuple[str, dict]:
+    """The code for how the file at path failed to load, and what else is
+    safe to say about it: the line in that file where it failed, the
+    module it could not import, or the exception's class. Never the
+    exception's text, which can quote the file."""
+    same_file = os.path.abspath(path)
+    extra = {}
+    frames = traceback.extract_tb(error.__traceback__)
+    in_file = [f for f in frames if os.path.abspath(f.filename) == same_file]
+    if in_file:
+        extra["line"] = in_file[-1].lineno
+    if isinstance(error, _NoDetectParse):
+        return LOAD_NO_DETECT_PARSE, {}
+    if isinstance(error, SyntaxError):
+        # Compiling the file fails before any of it runs: the line is the
+        # error's own, when the error is in this file and not one it imports.
+        line = {}
+        if error.lineno and os.path.abspath(error.filename or path) == same_file:
+            line["line"] = error.lineno
+        return LOAD_SYNTAX, line
+    if isinstance(error, ImportError) and "relative import" in str(error):
+        return LOAD_RELATIVE_IMPORT, extra
+    if isinstance(error, ModuleNotFoundError):
+        if error.name and _MODULE_NAME.match(error.name):
+            extra["module"] = error.name
+        return LOAD_MISSING_MODULE, extra
+    if isinstance(error, ImportError):
+        return LOAD_IMPORT, extra
+    if any(os.path.basename(f.filename) == "dataclasses.py" for f in frames):
+        # A drop-in is loaded without a sys.modules entry, and the dataclass
+        # machinery looks its module up there.
+        return LOAD_DATACLASS, extra
+    extra["error"] = type(error).__name__
+    return LOAD_ERROR, extra
+
+
+def unloaded_extra_parsers(unloaded: list, bundled: list) -> list[dict]:
+    """The files in the parsers folder that failed to load
+    (load_extra_parsers' unloaded), as a dispatcher reports them under
+    "unloadedExtraParsers": each file's name, a code for how it failed
+    (_classify_load_error) at stage "load", and for a file named like a
+    bundled parser, that parser's name under "replaces" - it is the one
+    still reading statements in the file's place. Without this a file that
+    doesn't load is passed over silently, and its user never learns that
+    their fix, or their new parser, isn't running. Like
+    failedExtraParsers, it never quotes the exception, and the file name is
+    the user's own: the app shows it to them and reports it nowhere."""
+    bundled_names = {parser_name_key(m.__name__): m.__name__.rsplit(".", 1)[-1] for m in bundled}
+    out = []
+    for name, path, error in unloaded:
+        code, extra = _classify_load_error(error, path)
+        entry = {"file": name, "code": code, "stage": "load", **extra}
+        replaces = bundled_names.get(parser_name_key(name[:-3]))
+        if replaces:
+            entry["replaces"] = replaces
+        out.append(entry)
+    return out
+
+
+def expected_parser_not_loaded(expected_parser: str | None, unloaded: list,
+                               input_format: str) -> tuple[str, dict] | None:
+    """When the parser --expected-parser names is a file in the parsers
+    folder that failed to load: the failure a dispatcher reports instead of
+    reading anything. Matching by name alone (check_expected_parser), the
+    bundled parser of that name would read the statement and pass for the
+    file, and with no such parser the answer would be "nothing matched",
+    saying nothing of why. The message carries the exception's text, for
+    whoever is building or trying the file (Build Transactions Extractor's
+    Verify step, a trial) and must fix it; the diagnostic, which may be
+    reported, does not."""
+    if not expected_parser:
+        return None
+    expected = parser_name_key(expected_parser[:-3] if expected_parser.endswith(".py") else expected_parser)
+    for name, path, error in unloaded:
+        if parser_name_key(name[:-3]) != expected:
+            continue
+        code, _ = _classify_load_error(error, path)
+        message = f"expected parser {expected_parser} doesn't load, so it was never tried: {error}"
+        diagnostic = {
+            "schemaVersion": 4,
+            "reference": f"EXTERNAL-PARSER-{code.removeprefix('PARSER_')}",
+            "code": code,
+            "parserId": "external_parser",
+            "institution": "External parser",
+            "supportTier": SUPPORT_TIER_UNTESTED,
+            "inputFormat": _safe_label(input_format, "unknown", 16).lower(),
+            "stage": "load",
+        }
+        return message, diagnostic
+    return None
 
 
 def merge_parsers(bundled: list, extra: list) -> list:

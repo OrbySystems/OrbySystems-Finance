@@ -113,7 +113,11 @@ repo" for exactly what that means and its limitations (no network
 access, no arbitrary filesystem access, no per-plugin dependency
 installation). A dropped-in parser that claims an export and then fails
 is passed over, and named under "failedExtraParsers", exactly as in
-bank_statement.py (see its docstring and parser_common.read_claimed).
+bank_statement.py (see its docstring and parser_common.read_claimed). A
+dropped-in file that doesn't load is named under "unloadedExtraParsers",
+and an --expected-parser or --only-extra-parser that doesn't load fails
+the read at once, also as there; its --check-extra-parsers covers this
+folder for both dispatchers.
 
 --kind (bank or brokerage), used internally by pkg/ingest when a caller
 forces DocTypeBank/DocTypeBrokerage, restricts the try list to modules
@@ -297,7 +301,15 @@ def main() -> None:
         _dump_rows(csv_path)
         return
 
-    extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "csv", only_extra_parser)
+    input_format = "xlsx" if csv_path.lower().endswith(".xlsx") else "csv"
+    unloaded = []
+    extra_parsers, extra_misses = parser_common.load_extra_parsers(extra_parsers_dir, "csv", only_extra_parser, unloaded)
+    # Files in the parsers folder that don't load, named on every read.
+    unloaded_report = parser_common.unloaded_extra_parsers(unloaded, _PARSERS)
+    if not_loaded := parser_common.expected_parser_not_loaded(expected_parser or only_extra_parser, unloaded, input_format):
+        message, diagnostic = not_loaded
+        print(json.dumps({"error": message, "diagnostic": diagnostic, "unloadedExtraParsers": unloaded_report}))
+        sys.exit(1)
     parsers = extra_parsers if only_extra_parser else parser_common.merge_parsers(_PARSERS, extra_parsers)
     bundled = [] if only_extra_parser else _PARSERS
     if kind_filter:
@@ -323,23 +335,25 @@ def main() -> None:
     if module is None:
         if extra_misses:
             reason = "; ".join([reason] + extra_misses) if reason else "; ".join(extra_misses)
-        print(json.dumps({
+        out = {
             "detected": False,
             "reason": reason,
-            "diagnostic": parser_common.unsupported_format_diagnostic(
-                "xlsx" if csv_path.lower().endswith(".xlsx") else "csv",
-                {"columnCount": len(header)},
-            ),
-        }))
+            "diagnostic": parser_common.unsupported_format_diagnostic(input_format, {"columnCount": len(header)}),
+        }
+        if unloaded_report:
+            out["unloadedExtraParsers"] = unloaded_report
+        print(json.dumps(out))
         return
 
-    input_format = "xlsx" if csv_path.lower().endswith(".xlsx") else "csv"
     input_stats = {"columnCount": len(header)}
     try:
         rows = _read_rows(csv_path, header)
     except Exception as e:  # noqa: BLE001
         message, diagnostic = parser_common.parser_failure(module, e, input_format, input_stats)
-        print(json.dumps({"error": message, "diagnostic": diagnostic}))
+        out = {"error": message, "diagnostic": diagnostic}
+        if unloaded_report:
+            out["unloadedExtraParsers"] = unloaded_report
+        print(json.dumps(out))
         sys.exit(1)
     input_stats["rowCount"] = len(rows)
     # Each parser gets its own copy of the rows: one that fails after
@@ -354,6 +368,8 @@ def main() -> None:
         out = {"error": message, "diagnostic": diagnostic}
         if read.failed:
             out["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+        if unloaded_report:
+            out["unloadedExtraParsers"] = unloaded_report
         print(json.dumps(out))
         sys.exit(1)
     module, result = read.module, read.result
@@ -368,6 +384,8 @@ def main() -> None:
     if read.failed:
         # Read by a parser after them: the app names them to the user.
         result["failedExtraParsers"] = parser_common.failed_extra_parsers(read.failed)
+    if unloaded_report:
+        result["unloadedExtraParsers"] = unloaded_report
     if not only_extra_parser:
         shadowed = parser_common.bundled_shadow_of(_PARSERS, module)
         if shadowed:

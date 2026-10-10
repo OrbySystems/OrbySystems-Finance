@@ -11,7 +11,7 @@ from datetime import datetime
 
 import pdfplumber
 
-from . import check_ocr, common
+from institutions import check_ocr, common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 

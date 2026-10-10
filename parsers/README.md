@@ -130,4 +130,4 @@ OrbySystems vendors this repository as a git submodule and imports its
 `demo/` through `embed.go`.
 At runtime OrbySystems writes the tree out and runs the dispatchers in a
 sandbox. Users can also drop extra parser `.py` files into
-`~/.orbysystems/ingest/parsers/` without touching either repo — see `CLAUDE.md`.
+`~/.orby/ingest/parsers/` without touching either repo — see `CLAUDE.md`.

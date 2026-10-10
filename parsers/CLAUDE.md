@@ -30,9 +30,15 @@ about a PDF says up front which kind it is. First match wins regardless
 of kind.
 
 Reuse `scripts/institutions/common.py` (`parse_amount`, `last4_digits`,
-`apply_running_balance`, `negate_amounts_and_balances`) — a
-`csv_institutions/` module reaches it with `from institutions import
-common`.
+`apply_running_balance`, `negate_amounts_and_balances`). Import it, and
+any other shared module, absolutely — `from institutions import common`,
+from `institutions/` and `csv_institutions/` alike — never `from . import
+common`. A copy of a parser in the user's parsers folder (see "Fixing a
+bundled parser without a release" below) is loaded outside the package,
+where a relative import fails: the copy is skipped and the bundled parser
+goes on reading statements in its place. For the same reason, use plain
+classes, not `@dataclass`. `tests/test_drop_in_copies.py` loads a copy of
+every bundled parser the way the parsers folder does.
 
 ## Workflow
 
@@ -80,14 +86,17 @@ hand-written parser.
 
 ## Fixing a bundled parser without a release
 
-Copy the bundled module to `~/.orbysystems/ingest/parsers/<same-name>.py`, edit
+Copy the bundled module to `~/.orby/ingest/parsers/<same-name>.py`, edit
 it there. A same-named file in that directory *replaces* the bundled
 module at its original position in the try order
 (`parser_common.merge_parsers`). A differently-named file is a new
 parser, tried after all bundled ones. A dropped-in file that claims a
 statement and then fails is passed over, as if it weren't installed, so a
 half-finished edit gives way to the bundled module it replaces. The
-dispatcher names it under `failedExtraParsers` (CONTRACT.md).
+dispatcher names it under `failedExtraParsers` (CONTRACT.md). A copy that
+doesn't load at all is named under `unloadedExtraParsers`, with a code for
+why, while the bundled module goes on reading in its place
+(`tests/test_unloaded_drop_ins.py`).
 
 Name matching here is `-`/`_` insensitive (`parser_common.parser_name_key`):
 a parser built locally by OrbySystems' Build Transactions Extractor is

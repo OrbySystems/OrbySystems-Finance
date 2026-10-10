@@ -25,7 +25,7 @@ import parser_common
 import re
 from datetime import datetime
 
-from . import common
+from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
