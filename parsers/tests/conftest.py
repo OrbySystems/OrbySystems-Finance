@@ -135,7 +135,9 @@ def run_statement(request):
         if not path.exists():
             pytest.skip(f"fixture not present locally: {name}")
         script = "csv_statement.py" if path.suffix.lower() in (".csv", ".xlsx") else "bank_statement.py"
-        args = list(extra_args)
+        # Tests are where the contract is enforced: backwards-compatible mode
+        # (the importer's default) is off.
+        args = ["--strict", *extra_args]
         epd = _extra_parsers_dir(request)
         if epd:
             args += ["--extra-parsers-dir", epd]

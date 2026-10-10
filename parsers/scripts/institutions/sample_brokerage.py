@@ -124,6 +124,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
     common.tag_account(brokerage_transactions, account, account_type)
     common.tag_account(cash_transactions, account, account_type)
 
+    parser_common.set_directions(brokerage_transactions)
     return {
         "institution": _HEADER_MARKER.title(),
         "statementDate": statement_date,

@@ -293,6 +293,11 @@ def main() -> None:
     argv, kind_filter = _pop_flag_value(argv, "--kind")
     argv, expected_parser = _pop_flag_value(argv, "--expected-parser")
     argv, adjust_raw = _pop_flag_value(argv, "--adjust")
+    # Strict mode is for writing and testing a parser: the newer contract
+    # rules are errors. Without it they are warnings (backwards compatible).
+    strict = "--strict" in argv
+    argv = [a for a in argv if a != "--strict"]
+    parser_common.set_strict(strict)
     try:
         adjust = parser_common.parse_adjust_flag(adjust_raw)
     except ValueError as e:

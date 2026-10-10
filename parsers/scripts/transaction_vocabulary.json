@@ -223,5 +223,76 @@
     {"event": "assigned", "words": ["assigned", "assignment"]},
     {"event": "reverse_split", "words": ["reverse"]},
     {"event": "split", "words": ["split"]}
+  ],
+
+  "_corporate_events_doc": [
+    "THE CLASSIFICATION OF A CORPORATE ACTION. Every brokerage_transactions row",
+    "whose transaction_type is corporate_action sets corporate_event to one of",
+    "corporate_events below. Like transaction_type it is closed: parse() rejects",
+    "any other value by name. The row's action stays the issuer's own word, for",
+    "display; nothing downstream matches on it.",
+    "",
+    "A parser sets what the STATEMENT SHOWS and never guesses a cause.",
+    "  Stated - the statement names the event:",
+    "    split, reverse_split, spinoff, merger_in, merger_out,",
+    "    conversion_in, conversion_out (a ticker or CUSIP change),",
+    "    expired, assigned, exercised (an option contract ended), cash_in_lieu",
+    "  Observed - only the shape is printed, the cause is not:",
+    "    share_distribution   shares of a security arrive with no cash and no",
+    "                         stated reason (Fidelity prints a split this way)",
+    "    share_exchange_in / share_exchange_out",
+    "                         shares move between securities with no stated",
+    "                         event",
+    "  other                  anything else (an adjustment, a lending credit).",
+    "",
+    "An observed kind is resolved after import, from the surrounding data (the",
+    "adjacent holdings snapshots) or by the user; that answer is stored apart",
+    "from this field, so re-parsing a statement never overwrites it. Setting an",
+    "observed kind is always right when unsure; setting a stated one the",
+    "statement does not state is not.",
+    "",
+    "A word in two institutions' statements is therefore never the key: the",
+    "same bare 'Distribution' is share_distribution from a statement that",
+    "prints no cash, and a cash distribution (an RMD) is transaction_type",
+    "distribution, a different field entirely."
+  ],
+  "corporate_events": [
+    "split", "reverse_split", "spinoff", "merger_in", "merger_out",
+    "conversion_in", "conversion_out", "expired", "assigned", "exercised", "cash_in_lieu",
+    "share_distribution", "share_exchange_in", "share_exchange_out", "other"
+  ],
+
+  "_corporate_event_directions_doc": [
+    "The direction a corporate_event implies for the security the row is about,",
+    "as the row's subtype carries it ('In' arriving, 'Out' leaving). A row whose",
+    "subtype is In or Out and contradicts its event is rejected by parse(): the",
+    "event is authoritative, subtype is a display hint. Events not listed here",
+    "(split, reverse_split, cash_in_lieu, other) have no fixed direction."
+  ],
+  "corporate_event_directions": {
+    "merger_in": "In", "merger_out": "Out",
+    "conversion_in": "In", "conversion_out": "Out",
+    "share_exchange_in": "In", "share_exchange_out": "Out",
+    "share_distribution": "In", "spinoff": "In",
+    "expired": "Out", "assigned": "Out", "exercised": "Out"
+  },
+
+  "_corporate_event_labels_doc": [
+    "Words in an action label that name a STATED event, for a parser that",
+    "lifts the issuer's label (parser_common.label_event). Compared as",
+    "lower-case letter runs, whole words, first match wins - so 'reverse' is",
+    "listed before 'split'. 'merger' and 'conversion' have no direction of their own: they become",
+    "merger_in / merger_out and conversion_in / conversion_out from the row's subtype (In / Out)."
+  ],
+  "corporate_event_labels": [
+    {"event": "expired", "words": ["expired", "expiration", "expiry"]},
+    {"event": "assigned", "words": ["assigned", "assignment"]},
+    {"event": "exercised", "words": ["exercised", "exercise"]},
+    {"event": "reverse_split", "words": ["reverse"]},
+    {"event": "split", "words": ["split"]},
+    {"event": "spinoff", "words": ["spinoff", "spin"]},
+    {"event": "cash_in_lieu", "words": ["lieu"]},
+    {"event": "merger", "words": ["merger", "merged"]},
+    {"event": "conversion", "words": ["conversion", "converted"]}
   ]
 }
