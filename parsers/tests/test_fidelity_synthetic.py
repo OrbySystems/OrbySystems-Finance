@@ -175,7 +175,8 @@ def test_fidelity_spinoff_distribution(run_statement):
     spinoff = next(t for t in stmt.brokerage_transactions if t.get("symbol") == "ZQHH")
     assert spinoff["action"] == "Distribution"
     assert spinoff["transaction_type"] == "corporate_action"
-    assert spinoff["subtype"] == "spinoff"
+    assert spinoff["subtype"] == "In"
+    assert spinoff["corporate_event"] == "spinoff"
     assert approx(spinoff["quantity"], 20.0)
     assert approx(spinoff["amount"], 0.0)
     assert spinoff["security_id"] == "888888HH8"

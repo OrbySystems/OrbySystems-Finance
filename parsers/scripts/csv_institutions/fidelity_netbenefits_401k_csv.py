@@ -56,7 +56,7 @@ event classifies identically regardless of which export produced it
     interest (action left as the raw "Dividend" - free text is fine once
     transaction_type is set)
   - "Exchange In"/"Exchange Out" -> action "Transfer In"/"Transfer Out",
-    transaction_type internal_transfer, subtype transfer - moving
+    transaction_type internal_transfer, subtype In/Out - moving
     between funds within the same plan account, external: false, so it
     correctly nets to zero rather than counting as a contribution
     (matches _TOTAL_LABELS in the PDF sibling exactly)
@@ -86,6 +86,14 @@ from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
+# Terms this format cannot contain, so Data Metrics says "not applicable"
+# instead of "not seen". Only what the statement cannot hold - never what this
+# parser merely does not read.
+NOT_APPLICABLE = {
+    "option:*": "A 401(k) plan holds no option contracts.",
+    "corporate_event:*": "A plan statement reports contributions, exchanges and fund activity, not corporate actions on securities.",
+}
+
 KIND = "brokerage"
 
 _INSTITUTION = "Fidelity NetBenefits"
@@ -101,8 +109,8 @@ _DATE_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 _TRANSACTION_TYPE_MAP = {
     "contributions": (None, "contribution", None),
     "dividend": (None, "dividend", "interest"),
-    "exchange in": ("Transfer In", "internal_transfer", "transfer"),
-    "exchange out": ("Transfer Out", "internal_transfer", "transfer"),
+    "exchange in": ("Transfer In", "internal_transfer", None),
+    "exchange out": ("Transfer Out", "internal_transfer", None),
     "change in market value": (None, "other", None),
     "balance forward": (None, "other", None),
     "revenue credit": ("Revenue Credit", "income", "other_income"),
@@ -180,6 +188,7 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
 
     common.tag_account(transactions, "", "401(k)")
 
+    parser_common.set_directions(transactions)
     return {
         "institution": _INSTITUTION,
         "statementDate": "",

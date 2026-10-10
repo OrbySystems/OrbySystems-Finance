@@ -279,6 +279,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
             "provider_account_id": provider_id,
             "currency_code": "USD",
         })
+    parser_common.set_directions(rows)
     return {
         "institution": INSTITUTION,
         "statementDate": end.isoformat(),

@@ -160,9 +160,99 @@ Any of the three tables may be omitted or empty.
 A share movement with no cash behind it (merger, assignment, expiry,
 share-lending adjustment) is a `brokerage_transactions` row with
 `transaction_type = "corporate_action"`, `amount` `0.00`, the share
-change in `quantity`, `subtype` `"Out"` for the security leaving or
-`"In"` for the one arriving, and — when the statement names the security
-on the other side — its identifier in `related_security_id`.
+change in `quantity` (its sign is not authoritative; see "Sign of `quantity`"),
+`corporate_event` saying which kind (below), `subtype` `"Out"` for the security
+leaving or `"In"` for the one arriving, and — when the statement names the
+security on the other side — its identifier in `related_security_id`.
+
+**Every `corporate_action` row sets `corporate_event`**, from a closed list in
+`scripts/transaction_vocabulary.json` (`corporate_events`); `parse()` rejects
+any other value, and rejects the field on a row that is not a corporate
+action. It says what the *statement shows*, never a guessed cause:
+
+| kind | values |
+|---|---|
+| stated | `split`, `reverse_split`, `spinoff`, `merger_in`, `merger_out`, `conversion_in`, `conversion_out`, `expired`, `assigned`, `exercised`, `cash_in_lieu` |
+| observed (shape only) | `share_distribution` (shares arrive, no cash, no stated reason), `share_exchange_in`, `share_exchange_out` |
+| other | `other` |
+
+The issuer's word stays in `action` for display; nothing downstream matches
+on it, because the same word means different things at different
+institutions (Fidelity prints a split as a bare `Distribution`; a cash
+`Distribution` is `transaction_type: distribution`, a different field). When
+a statement does not say what a share movement was, use the observed kind:
+OrbySystems resolves it after import from the surrounding data (adjacent
+holdings snapshots) or asks the user, and keeps that answer apart from this
+field so a re-parse never overwrites it. `parser_common.label_event(label,
+direction)` reads a stated event out of an issuer's label for a parser that
+only has the label; `parser_common.set_corporate_events(rows)` applies it to
+every row that has none (else `other`).
+
+A parser that predates the field (a user's own) still works: OrbySystems
+derives the value from the row and warns at import. A bundled parser is held
+to it by `tests/test_transaction_vocabulary.py`.
+
+**A transfer's direction is the sign of the row**: its `amount`, else its
+`quantity` when no cash moves (positive in, negative out). That is the one
+source; no field repeats it. `transfer_in` / `transfer_out` also name the
+direction in the type, and `tests/test_transaction_vocabulary.py` fails a
+bundled parser whose type disagrees with the sign. `internal_transfer` is the
+*scope* (both sides are the user's own accounts, which the linker and the
+performance figures rely on) and carries no direction of its own.
+
+**Sign of `quantity`.** On a trade or income row (`buy`, `sell`, `redemption`,
+`dividend`, ...) `quantity` is unsigned (a sale's quantity is positive): the
+type and the signed `amount` say which way it went. On a share movement that is not a trade it is signed,
+positive arriving and negative leaving, because there may be no cash for
+`amount` to carry the direction: `transfer_in` / `transfer_out`, and an
+`internal_transfer` with no cash. On a `corporate_action` the sign is not
+authoritative, since contracts and some issuers print it unsigned (a parser
+that does print the two legs of a merger signed lets OrbySystems pair them by
+their cancelling quantities); the direction is `corporate_event` (a `_in` / `_out` event, or one that implies it
+— `share_distribution` and `spinoff` arrive, `expired`, `assigned` and
+`exercised` leave, `corporate_event_directions` in the vocabulary) and
+`subtype`. `parse()` rejects a `subtype` of `"In"` / `"Out"` that contradicts
+its event; the event is authoritative and `subtype` is a display hint.
+
+### Strict mode and backwards-compatible mode
+
+The rules added with `corporate_event` and the direction / unsigned-quantity
+contract (a `corporate_action` sets `corporate_event`; a transfer or corporate
+action says `In` / `Out` in `subtype`, agreeing with its type, event and amount;
+`quantity` is never negative) are enforced in two ways:
+
+| mode | when | a broken rule is |
+|---|---|---|
+| **strict** (`--strict`) | writing and testing a parser: the test suite, a build's trial (`TrialParseCandidate`) | an error that fails `parse()`, naming the row |
+| **backwards compatible** (the default) | importing a statement | a warning on the import, one line per rule with the row count; a `corporate_event` that is invalid or on the wrong row is dropped so the importer derives it |
+
+So a parser written before these rules (a user's own) keeps importing, and the
+import shows what to fix. `tests/conftest.py`'s `run_statement` passes
+`--strict`, and `tests/test_transaction_vocabulary.py` fails if any bundled
+parser draws a warning in the default mode. Rules that existed before - an
+unknown `transaction_type`, a wrong-typed field - are errors in both.
+
+### Declaring what a format cannot contain: `NOT_APPLICABLE`
+
+A module may declare vocabulary terms that **cannot occur** in the statements it
+reads, each with a reason in words a user can read:
+
+```python
+NOT_APPLICABLE = {
+    "option:*": "A 401(k) plan holds no option contracts.",
+    "corporate_event:split": "...",
+}
+```
+
+A term is `<field>:<value>` or `<field>:*`, where field is `transaction_type`,
+`corporate_event` or `option` (`call`, `put`, `expired`, `assigned`,
+`exercised`). Data Metrics then says **not applicable** (with the reason)
+instead of **not seen**. Declare only what the *format* cannot hold; never
+something the parser merely does not read - that is a gap, and "not seen" is
+how it gets noticed. A term is not applicable to an institution only when every
+parser that has read that institution declares it. An unknown term is dropped,
+and `tests/test_transaction_vocabulary.py` fails a bundled module that declares
+one.
 
 ### `action` and `transaction_type` are not the same kind of field
 

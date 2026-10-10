@@ -24,6 +24,14 @@ from institutions import diagnostic_helpers
 KIND = parser_common.KIND_BROKERAGE
 INSTITUTION = "Charles Schwab"
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
+
+# Terms this format cannot contain, so Data Metrics says "not applicable"
+# instead of "not seen". Only what the statement cannot hold - never what this
+# parser merely does not read.
+NOT_APPLICABLE = {
+    "option:*": "A 401(k) plan holds no option contracts.",
+    "corporate_event:*": "A plan statement reports contributions, exchanges and fund activity, not corporate actions on securities.",
+}
 PARSER_REVISION = 1
 
 # OpenText's text layer frequently removes spaces between adjacent words even
@@ -380,6 +388,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
         account = _account(text)
         common.tag_account(holdings, account, _ACCOUNT_TYPE)
         common.tag_account(transactions, account, _ACCOUNT_TYPE)
+        parser_common.set_directions(transactions)
         return {
             "institution": INSTITUTION,
             "statementDate": statement_date,
