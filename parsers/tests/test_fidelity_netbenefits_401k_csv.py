@@ -37,9 +37,9 @@ def test_fidelity_netbenefits_401k_csv_synthetic(run_statement):
     assert exchange_out["description"] == "Exchange Out - SYNTH BOND FUND"
     assert exchange_out["action"] == "Transfer Out"
     assert exchange_out["transaction_type"] == "internal_transfer"
-    assert exchange_out["subtype"] == "transfer"
+    assert exchange_out["subtype"] == "Out"
     assert approx(exchange_out["amount"], -500.00)
-    assert approx(exchange_out["quantity"], -40.0)
+    assert approx(exchange_out["quantity"], 40.0)
 
     change_in_mv = stmt.brokerage_transactions[3]
     assert change_in_mv["action"] == "Change In Market Value"
@@ -51,7 +51,7 @@ def test_fidelity_netbenefits_401k_csv_synthetic(run_statement):
     assert exchange_in["description"] == "Exchange In - SYNTH GROWTH FUND"
     assert exchange_in["action"] == "Transfer In"
     assert exchange_in["transaction_type"] == "internal_transfer"
-    assert exchange_in["subtype"] == "transfer"
+    assert exchange_in["subtype"] == "In"
     assert approx(exchange_in["amount"], 500.00)
 
     # The two exchange legs net to zero - an internal move between funds,

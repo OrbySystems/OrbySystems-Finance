@@ -63,9 +63,8 @@ that moved outside the cash-flow table; security transfers sum to TOTAL
 SECURITY TRANSFERS; and lines that looked like rows but were not read are
 listed under their section's label.
 
-Quantities are signed by direction: a sale's or redemption's shares or
-contracts leave the account (negative), as the option figures read a sell
-to open; a buy's arrive (positive).
+Quantities are never signed: the type says a sale left the account, and a
+transfer or corporate action says which way it went in subtype (In / Out).
 
 This file is also installed on its own as a drop-in replacement
 (~/.orby/ingest/parsers/etrade_brokerage.py). parser_common.load_extra_parsers
@@ -1594,6 +1593,27 @@ _CORPORATE_WORDS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _corporate_event(label: str, event: str, subtype: str) -> str:
+    """corporate_event for a TRANSFERS, CORPORATE ACTIONS row. The vocabulary's
+    stated events come from the shared label reader; what is left are the
+    shapes E*TRADE prints without a cause (a stock dividend, a name change, a
+    tender), which stay observed kinds or "other"."""
+    if event in {"expired", "assigned", "exercised"}:
+        return event
+    stated = parser_common.label_event(label, subtype)
+    if stated:
+        return stated
+    words = label.lower()
+    incoming = subtype == "In"
+    if "stock dividend" in words:
+        return "share_distribution"
+    if any(w in words for w in ("name change", "symbol change")):
+        return "conversion_in" if incoming else "conversion_out"
+    if any(w in words for w in ("exchange", "tender", "redemption")):
+        return "share_exchange_in" if incoming else "share_exchange_out"
+    return "other"
+
+
 def _by_length(words):
     return tuple(sorted(words, key=lambda item: len(item[0]), reverse=True))
 
@@ -2330,6 +2350,7 @@ def _finish_transactions(activity: _Activity, holdings: list[dict],
                 out["subtype"] = "Out" if quantity is not None and quantity < 0 else "In"
             if quantity is not None:
                 out["quantity"] = quantity
+            out["corporate_event"] = _corporate_event(row["action"], event, out["subtype"])
         out.update(common_fields)
         corporate_out.append(out)
     return cash_out, card_out, corporate_out
@@ -2565,6 +2586,7 @@ def _parse_at_work(pages_text: list[str]) -> dict:
     except ValueError as error:
         raise parser_common.enrich_parser_error(error, **context) from error
 
+    parser_common.set_directions(transactions_out)
     return {
         "institution": INSTITUTION,
         "statementDate": end.isoformat(),

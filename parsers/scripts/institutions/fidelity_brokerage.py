@@ -1488,6 +1488,24 @@ def _link_merger_legs(rows: list[dict]) -> None:
             matches[0].setdefault("related_security_id", row["security_id"])
 
 
+def _is_bare_distribution(row: dict) -> bool:
+    """A share arrival printed as a bare "Distribution" (no cash, no cause)."""
+    return row.get("transaction_type") == _CORPORATE_TYPE and row.get("action") == "Distribution"
+
+
+def _corporate_event(row: dict) -> str:
+    """What a corporate-action row is, as the statement shows it.
+
+    A bare "Distribution" of shares is share_distribution, not a split or
+    a spin-off: Fidelity prints both the same way, and only a named parent
+    makes it a spin-off. Resolving the rest is left to the import, which
+    can see the surrounding snapshots.
+    """
+    if _is_bare_distribution(row):
+        return "spinoff" if row.get("related_security_id") else "share_distribution"
+    return parser_common.label_event(row.get("action", ""), row.get("subtype", "")) or "other"
+
+
 def _clean_internal_transfer_name(text: str) -> tuple[str, str]:
     refs = _INTERNAL_TRANSFER_REF_RE.findall(text)
     name = _INTERNAL_TRANSFER_REF_RE.sub("", text)
@@ -1554,6 +1572,8 @@ def _finish_activity(rows: list[dict], holdings: list[dict]) -> None:
         row.pop("_exchange_note", None)
         row.pop("_await_value", None)
         row.pop("_balance", None)
+        if row.get("transaction_type") == _CORPORATE_TYPE and "corporate_event" not in row:
+            row["corporate_event"] = _corporate_event(row)
         # Stripped again here, not just per line: an annotation is
         # regularly split across the lines it wraps over, so it only
         # becomes matchable once the name has been joined back up.
@@ -1727,7 +1747,11 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
                     "amount": 0.0,
                     "action": "Distribution",
                     "transaction_type": "corporate_action",
-                    "subtype": "spinoff",
+                    # Not yet known to be a spin-off: it is one only when the
+                    # statement names a parent ("SPINOFF FROM"), read below.
+                    # Without one this is shares arriving with no cash and no
+                    # stated reason - which Fidelity also prints for a split.
+                    "subtype": "In",
                     "security_id": spinoff.group("security_id"),
                     "security_id_type": "CUSIP",
                     "quantity": _amount(spinoff.group("quantity")),
@@ -1751,7 +1775,7 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
                 income.append(pending)
             elif pending is not None:
                 spinoff_from = _SPINOFF_FROM_RE.match(line.strip())
-                if spinoff_from and pending.get("subtype") == "spinoff":
+                if spinoff_from and _is_bare_distribution(pending):
                     pending["related_security_id"] = spinoff_from.group("parent")
                     continue
                 text = _strip_notes(line)
@@ -1961,6 +1985,7 @@ def _parse_account_pages(pages_text: list[str], pdf_path: str,
         # provider_account_id or any other output field.
         common.tag_account(rows, common.last4_digits(account), account_type)
 
+    parser_common.set_directions(trades + income + transfers + exchanges + internal_transfers + corporate + charges)
     return {
         "institution": _INSTITUTION,
         "statementDate": statement_date,

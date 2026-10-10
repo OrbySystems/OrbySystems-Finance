@@ -37,6 +37,14 @@ import parser_common
 
 KIND = parser_common.KIND_BROKERAGE
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
+
+# Terms this format cannot contain, so Data Metrics says "not applicable"
+# instead of "not seen". Only what the statement cannot hold - never what this
+# parser merely does not read.
+NOT_APPLICABLE = {
+    "option:*": "A 401(k) plan holds no option contracts.",
+    "corporate_event:*": "A plan statement reports contributions, exchanges and fund activity, not corporate actions on securities.",
+}
 PARSER_REVISION = 6
 
 _INSTITUTION = "Fidelity NetBenefits"

@@ -707,6 +707,10 @@ _BROKERAGE_TXN_REQUIRED_KEYS = {"date", "description", "amount", "account", "acc
 _BROKERAGE_TXN_OPTIONAL_KEYS = {
     "action", "transaction_type", "subtype", "symbol", "security_id",
     "security_id_type", "quantity", "price", "commission_and_fees",
+    # What a corporate_action row IS, from a closed vocabulary
+    # (transaction_vocabulary.json's corporate_events). transaction_type
+    # says the row is a corporate action; this says which kind.
+    "corporate_event",
     "amount_missing", "currency_code", "transaction_time", "status", "reference",
     "cancel_reference", "provider_account_id", "institution",
     # What a sale actually realized, which the statement prints per row
@@ -768,7 +772,7 @@ _STRING_ROW_KEYS = {
     "institution", "account", "accountType", "type", "cusip", "isin",
     "sedol", "figi", "price_as_of", "price_time", "position_type",
     "market_identifier_code", "sector", "industry", "tax_lots_json",
-    "realized_gain_term", "related_security_id",
+    "realized_gain_term", "related_security_id", "corporate_event",
 }
 _BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent"}
 
@@ -827,6 +831,129 @@ ACTION_CLASSES = {
 
 #: Corporate-action event -> the lower-case words in an action label that name it.
 CORPORATE_ACTION_EVENTS = {e["event"]: frozenset(e["words"]) for e in VOCABULARY["corporate_action_events"]}
+
+#: Closed set of corporate_event values - see the vocabulary's
+#: _corporate_events_doc. A corporate_action row sets one; parse() rejects
+#: anything else by name.
+CORPORATE_EVENTS = frozenset(VOCABULARY["corporate_events"])
+
+#: Direction (subtype In / Out) each corporate_event implies, where it has one.
+CORPORATE_EVENT_DIRECTIONS = dict(VOCABULARY["corporate_event_directions"])
+
+#: Lower-case label words that name a stated event, first match wins.
+_CORPORATE_EVENT_LABELS = [(e["event"], frozenset(e["words"])) for e in VOCABULARY["corporate_event_labels"]]
+
+
+#: Label events whose kind needs the row's direction: merger -> merger_in/out.
+_DIRECTED_EVENTS = frozenset({"merger", "conversion"})
+
+
+def label_event(label: str, direction: str = "") -> str:
+    """The stated corporate event an issuer's action label names, else "".
+    direction ("In" / "Out", the row's subtype) turns a bare merger into
+    merger_in or merger_out. For a parser that lifts the issuer's label;
+    a label that names nothing is the parser's call (other, or an observed
+    kind such as share_distribution), never a guess made here."""
+    words = set(re.split(r"[^a-z]+", (label or "").lower()))
+    for event, names in _CORPORATE_EVENT_LABELS:
+        if words & names:
+            if event in _DIRECTED_EVENTS:
+                d = (direction or "").lower()
+                return f"{event}_in" if d == "in" else f"{event}_out" if d == "out" else ""
+            return event
+    return ""
+
+
+#: The option kinds a statement can show for a contract, alongside call/put.
+OPTION_KINDS = ("call", "put", "expired", "assigned", "exercised")
+
+
+def _not_applicable_terms() -> dict[str, tuple[str, ...]]:
+    """Every term a parser may declare not applicable, by field. A term is
+    "<field>:<value>", or "<field>:*" for all of the field's values."""
+    return {
+        "transaction_type": tuple(sorted(TRANSACTION_TYPES)),
+        "corporate_event": tuple(sorted(CORPORATE_EVENTS)),
+        "option": OPTION_KINDS,
+    }
+
+
+def expand_not_applicable(declared: dict) -> tuple[dict[str, str], list[str]]:
+    """Expands a module's NOT_APPLICABLE ({term: reason}) into one entry per
+    value, returning (terms, errors). A term names a vocabulary field and a
+    value in it (or *): "option:call", "corporate_event:*". An unknown field
+    or value, or a missing reason, is an error and the term is dropped - a
+    mistyped declaration must never hide a gap it did not mean to."""
+    fields = _not_applicable_terms()
+    out: dict[str, str] = {}
+    errors: list[str] = []
+    for term, reason in (declared or {}).items():
+        field, _, value = str(term).partition(":")
+        if field not in fields or (value != "*" and value not in fields[field]):
+            errors.append(f"{term!r} is not a vocabulary term")
+            continue
+        if not isinstance(reason, str) or not reason.strip():
+            errors.append(f"{term!r} needs a reason, in words a user can read")
+            continue
+        for v in (fields[field] if value == "*" else (value,)):
+            out[f"{field}:{v}"] = reason.strip()
+    return out, errors
+
+
+def module_not_applicable(module) -> dict[str, str]:
+    """The vocabulary terms this parser's module declares cannot occur in the
+    statements it reads, each with the reason. Declared only where the format
+    cannot contain the thing (a 401(k) plan holds no option contracts) - never
+    for something the parser merely does not read, which is a gap, not a
+    fact about the institution."""
+    terms, _ = expand_not_applicable(getattr(module, "NOT_APPLICABLE", None) or {})
+    return terms
+
+
+#: Rows that move a security (or cash) in or out and so have a direction.
+DIRECTIONAL_TYPES = frozenset({"transfer_in", "transfer_out", "internal_transfer", "corporate_action"})
+_TYPE_DIRECTION = {"transfer_in": "In", "transfer_out": "Out"}
+
+
+def set_directions(rows: list[dict]) -> None:
+    """Applies the direction rule to brokerage_transactions rows: every
+    transfer_in / transfer_out / internal_transfer / corporate_action row says
+    which way it went in subtype ("In" / "Out"), and quantity is never signed.
+
+    A row's direction is what the parser set, else what its type or
+    corporate_event implies, else the sign of its amount, else the sign of its
+    quantity as the statement printed it - and only then is quantity made
+    positive. Call it last, after set_corporate_events. A parser that knows
+    the direction sets subtype itself; this fills the rest and unsigns."""
+    for row in rows:
+        if row.get("transaction_type") in DIRECTIONAL_TYPES:
+            direction = row.get("subtype") if row.get("subtype") in ("In", "Out") else ""
+            direction = (
+                direction
+                or _TYPE_DIRECTION.get(row["transaction_type"], "")
+                or CORPORATE_EVENT_DIRECTIONS.get(row.get("corporate_event") or "", "")
+            )
+            if not direction:
+                for value in (row.get("amount"), row.get("quantity")):
+                    if value:
+                        direction = "In" if value > 0 else "Out"
+                        break
+            if direction:
+                row["subtype"] = direction
+        if isinstance(row.get("quantity"), (int, float)) and row["quantity"] < 0:
+            row["quantity"] = -row["quantity"]
+
+
+def set_corporate_events(rows: list[dict]) -> None:
+    """Sets corporate_event on every corporate_action row that has none, from
+    what its label states (label_event), else "other". For a parser whose
+    statements name an event in the issuer's own words and nothing more; a
+    parser that can tell more (a named parent, a printed ratio) sets the
+    field itself, and an unexplained share arrival is share_distribution."""
+    for row in rows:
+        if row.get("transaction_type") == "corporate_action" and not row.get("corporate_event"):
+            row["corporate_event"] = label_event(row.get("action", ""), row.get("subtype", "")) or "other"
+
 
 #: An option contract as the symbol column must carry it - "AVGO260918C420"
 #: is a September 2026 $420 call on AVGO. OrbySystems recognises an option
@@ -944,6 +1071,101 @@ def validate_parse_result(result: dict, module_name: str) -> None:
         statement_checks.validate_checks(result["checks"], {"cash_transactions": txns}, module_name)
 
 
+#: Backwards-compatible mode. The rules added with corporate_event and the
+#: unsigned-quantity / In-Out direction contract (see CONTRACT.md) are
+#: enforced strictly while a parser is being written or tested, and only
+#: reported as warnings when a statement is ingested, so a parser written
+#: before them (a user's own) keeps working. The dispatchers' --strict flag
+#: selects the first; the default is the second.
+_STRICT = False
+_RULE_BREACHES: dict[str, list] = {}
+
+
+def set_strict(strict: bool) -> None:
+    """Turns backwards-compatible mode off (strict) or on, and forgets any
+    warnings collected so far."""
+    global _STRICT
+    _STRICT = bool(strict)
+    reset_rule_warnings()
+
+
+def reset_rule_warnings() -> None:
+    _RULE_BREACHES.clear()
+
+
+def take_rule_warnings() -> list[str]:
+    """The contract rules the parser broke, one line per rule with how many
+    rows broke it, then forgotten. Empty in strict mode, which raises instead."""
+    out = []
+    for first, count in _RULE_BREACHES.values():
+        out.append(first if count == 1 else f"{first} (and {count - 1} more row{'s' if count > 2 else ''})")
+    _RULE_BREACHES.clear()
+    return out
+
+
+def _breach(rule: str, message: str, strict: bool | None = None) -> bool:
+    """Reports a broken contract rule: raises in strict mode, otherwise
+    collects a warning (once per rule, counting rows). True when only warned,
+    so a caller can drop a value that must not reach the importer."""
+    if _STRICT if strict is None else strict:
+        raise ValueError(message)
+    entry = _RULE_BREACHES.setdefault(rule, [message + " This is accepted so older parsers keep working; "
+                                            "the parser test run (strict) rejects it.", 0])
+    entry[1] += 1
+    return True
+
+
+def _check_transaction_rules(row: dict, module_name: str, table_name: str, i: int, strict: bool | None = None) -> None:
+    """The contract rules that arrived after parsers were first written, for
+    one brokerage_transactions row: corporate_event (closed list, only on a
+    corporate action, required there), direction in subtype (In / Out, agreeing
+    with the type, the event and the sign of the amount, required on a
+    transfer or corporate action) and unsigned quantity."""
+    where = f"{module_name}.parse(): tables[{table_name!r}][{i}]"
+    ttype = row.get("transaction_type")
+    event = row.get("corporate_event")
+    subtype = row.get("subtype")
+
+    if event and event not in CORPORATE_EVENTS:
+        if _breach("event-vocabulary", f"{where}['corporate_event'] is {event!r}, which is not in the vocabulary. "
+                   f"Valid values: {sorted(CORPORATE_EVENTS)}. If the statement does not say which event it "
+                   f"is, use an observed kind (share_distribution, share_exchange_in/out) or 'other'.", strict):
+            row.pop("corporate_event")  # the importer derives it instead
+            event = None
+    if event and ttype != "corporate_action":
+        if _breach("event-on-other-row", f"{where}['corporate_event'] is set on a row whose transaction_type is "
+                   f"{ttype!r}; only a corporate_action row has one.", strict):
+            row.pop("corporate_event")
+            event = None
+    if ttype == "corporate_action" and not event:
+        _breach("event-missing", f"{where} is a corporate_action with no corporate_event. Set one of "
+                f"{sorted(CORPORATE_EVENTS)}; if the statement does not say what it was, share_distribution "
+                f"(shares arriving, no cause) or 'other'.", strict)
+
+    if ttype in DIRECTIONAL_TYPES and subtype not in ("In", "Out"):
+        _breach("direction-missing", f"{where} is a {ttype} with subtype {subtype!r}; its direction goes in "
+                f"subtype, 'In' or 'Out' (parser_common.set_directions fills it in).", strict)
+    if subtype in ("In", "Out"):
+        implied = _TYPE_DIRECTION.get(ttype)
+        if implied and implied != subtype:
+            _breach("direction-type", f"{where} is {ttype!r} but has subtype {subtype!r}; a {ttype} is always "
+                    f"{implied!r}.", strict)
+        by_event = CORPORATE_EVENT_DIRECTIONS.get(event or "")
+        if by_event and by_event != subtype:
+            _breach("direction-event", f"{where} has corporate_event {event!r}, which is always {by_event!r}, "
+                    f"but subtype {subtype!r}. The event is authoritative; fix whichever one is wrong.", strict)
+        amount = row.get("amount")
+        if ttype in ("transfer_in", "transfer_out", "internal_transfer") and isinstance(amount, (int, float)) \
+                and amount and (amount > 0) != (subtype == "In"):
+            _breach("direction-amount", f"{where} is a {ttype} with subtype {subtype!r} but amount {amount}: "
+                    f"cash moving in is positive and cash moving out is negative.", strict)
+
+    quantity = row.get("quantity")
+    if isinstance(quantity, (int, float)) and not isinstance(quantity, bool) and quantity < 0:
+        _breach("quantity-signed", f"{where} has quantity {quantity}. A transaction's quantity is never signed; "
+                f"the type, or subtype In/Out on a transfer or corporate action, says which way it went.", strict)
+
+
 def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
     """The KIND_BROKERAGE sibling of validate_parse_result: raises
     ValueError with a specific, plugin-author-facing message if result
@@ -1015,6 +1237,8 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
             # consumer, which for a money-movement class means the row stops
             # counting as a contribution and starts counting as gain. Fail
             # by name, the same way an unknown key does.
+            if table_name == "brokerage_transactions":
+                _check_transaction_rules(row, module_name, table_name, i)
             ttype = row.get("transaction_type")
             if ttype and ttype not in TRANSACTION_TYPES:
                 raise ValueError(
@@ -1049,12 +1273,22 @@ def finish_parse(result: dict, module, adjust: dict | None = None) -> dict:
             module.__name__,
         )
     result["checkResults"] = statement_checks.evaluate(checks, result["tables"], result.get("statementDate", ""))
+    # Contract rules a parser written before them breaks (backwards-compatible
+    # mode only; strict mode raised already). The importer shows them.
+    rule_warnings = take_rule_warnings()
+    if rule_warnings:
+        result.setdefault("warnings", []).extend(rule_warnings)
     bundled = module.__name__.startswith(("institutions.", "csv_institutions."))
     result["parser"] = {
         "id": module.__name__.rsplit(".", 1)[-1],
         "tier": module_support_tier(module),
         "bundled": bundled,
     }
+    # Terms the parser says cannot occur here, so a coverage report says
+    # "not applicable" rather than "not seen". Left out when there are none.
+    not_applicable = module_not_applicable(module)
+    if not_applicable:
+        result["parser"]["notApplicable"] = not_applicable
     return result
 
 
@@ -1494,6 +1728,7 @@ def read_claimed(module, call_parse, call_detect, parsers: list, bundled: list, 
     failed = []
     while True:
         try:
+            reset_rule_warnings()
             return Read(module=module, result=call_parse(module), failed=failed)
         except Exception as e:  # noqa: BLE001
             if not fall_through or is_bundled(module):

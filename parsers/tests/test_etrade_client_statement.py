@@ -229,9 +229,8 @@ def test_client_statement_reads_every_section_and_its_checks_hold() -> None:
     ]
     sold, dividend, interest, expired = rows
     assert sold["symbol"] == "AWI270416C130"  # the holding's own OCC code
-    # A sale's contracts leave the account: the option figures read a sell
-    # to open as a row with quantity < 0 (premium collected).
-    assert sold["quantity"] == pytest.approx(-1.0) and sold["price"] == pytest.approx(2.4)
+    # A sale's quantity is positive; the type says it left the account.
+    assert sold["quantity"] == pytest.approx(1.0) and sold["price"] == pytest.approx(2.4)
     assert sold["description"].endswith("UNSOLICITED TRADE; OPENING")
     assert dividend["symbol"] == "STM"
     assert "symbol" not in interest
@@ -362,7 +361,7 @@ def test_trades_transfers_fees_and_reinvestment_are_classified() -> None:
     assert got == [
         ("Funds Received", "deposit", "", None, 1000.0),
         ("Bought", "buy", "BFC", 10.0, -650.0),
-        ("Sold", "sell", "", -5.0, 599.95),
+        ("Sold", "sell", "", 5.0, 599.95),
         ("Dividend Reinvestment", "buy", "STM", 0.15, -15.0),
         ("Qualified Dividend", "dividend", "STM", None, 15.0),
         ("Service Fee", "fee", "", None, -25.0),
@@ -625,10 +624,11 @@ def test_sells_carry_a_negative_quantity_and_an_expiry_closes_the_side_traded() 
     result, checks = _parse(_with_activity(activity))
     rows = result["tables"]["brokerage_transactions"]
     sold_to_open, _, _, sold_to_close, expired = rows
-    assert sold_to_open["quantity"] == pytest.approx(-1.0)
-    assert sold_to_close["symbol"] == "BFC270319P60" and sold_to_close["quantity"] == pytest.approx(-2.0)
+    assert sold_to_open["quantity"] == pytest.approx(1.0)
+    assert sold_to_close["symbol"] == "BFC270319P60" and sold_to_close["quantity"] == pytest.approx(2.0)
     # Sold to close: the put was held, so its expiry takes 2 contracts away.
-    assert expired["symbol"] == "BFC270319P60" and expired["quantity"] == pytest.approx(-2.0)
+    assert expired["symbol"] == "BFC270319P60" and expired["quantity"] == pytest.approx(2.0)
+    assert expired["subtype"] == "Out"
     assert all(c["ok"] for c in checks), checks
 
 
@@ -715,7 +715,7 @@ def test_comment_lines_under_a_transfer_never_end_the_table() -> None:
     rows = result["tables"]["brokerage_transactions"][3:]
     assert [(r["action"], r.get("symbol"), r.get("quantity"), r["amount"]) for r in rows] == [
         ("Transfer into Account", "AWI", 20.0, 2400.0),
-        ("Transfer out of Account", "BFC", -10.0, -655.0),
+        ("Transfer out of Account", "BFC", 10.0, -655.0),
         ("Transfer into Account", "AWI", 10.0, 1200.0),  # the accrued interest cell is not the quantity
         ("Option Expired", "BFC270319P60", 2.0, 0.0),
         ("Option Expired", "BFC270319C70", 1.0, 0.0),
@@ -1380,9 +1380,11 @@ def test_a_fixed_income_subtotal_split_by_a_page_foot_still_closes_its_section()
 
 def _shares_after_split(before: float, row: dict) -> float:
     """orby-core's pkg/ingest/tax_lots.go applySplitRatio: every open lot is
-    scaled by (before + quantity) / before, so a split row's quantity has to
-    be the signed change in shares, never the new total."""
-    return before * ((before + row["quantity"]) / before)
+    scaled by (before + change) / before, so a split row's quantity has to be
+    the size of the change in shares, never the new total, with the direction
+    in subtype (Out for a reverse split)."""
+    change = -row["quantity"] if row["subtype"] == "Out" else row["quantity"]
+    return before * ((before + change) / before)
 
 
 def test_split_rows_carry_the_signed_share_change_tax_lots_apply() -> None:
@@ -1418,15 +1420,15 @@ def test_split_rows_carry_the_signed_share_change_tax_lots_apply() -> None:
     assert got == {
         # The vocabulary's "split"/"reverse_split" events: lots are rescaled.
         "Stock Split": ("AWI", 50.0, "In", 0.0, "split"),
-        "Reverse Split": ("BFC", -200.0, "Out", 0.0, "reverse_split"),
-        "Reverse Stock Split": ("STM", -120.0, "Out", 0.0, "reverse_split"),
+        "Reverse Split": ("BFC", 200.0, "Out", 0.0, "reverse_split"),
+        "Reverse Stock Split": ("STM", 120.0, "Out", 0.0, "reverse_split"),
         # No event: tax lots flag the position rather than rescale it.
         "Stock Dividend": ("AWI", 2.0, "In", 0.0, ""),
         "Spin-Off": ("GPC", 10.0, "In", 0.0, ""),
-        "Exchange Delivered Out": ("DHA", -20.0, "Out", 0.0, ""),
+        "Exchange Delivered Out": ("DHA", 20.0, "Out", 0.0, ""),
         "Exchange Received In": ("DHB", 20.0, "In", 0.0, ""),
         # Read by their exact action as merger_out / merger_in legs.
-        "Merger Out": ("OMB", -30.0, "Out", 0.0, ""),
+        "Merger Out": ("OMB", 30.0, "Out", 0.0, ""),
         "Merger In": ("BFC", 15.0, "In", 0.0, ""),
     }
     assert _shares_after_split(50.0, rows["Stock Split"]) == pytest.approx(100.0)

@@ -139,6 +139,7 @@ def parse(rows: list[dict[str, str]], path: str) -> dict:
         transactions.append(txn)
 
     common.tag_account(transactions, "", "Brokerage")
+    parser_common.set_directions(transactions)
     return {
         "institution": "Vanguard",
         "statementDate": "",

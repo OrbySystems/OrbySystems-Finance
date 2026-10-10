@@ -748,6 +748,10 @@ def _positioned_transaction(
         raise ValueError(f"unclassified positioned Schwab category {category!r}")
 
     printed_amount = _cell_number(block, bounds["amount"])
+    if transaction_type == "transfer":
+        # Schwab prints a bare "Transfer" category; the vocabulary has no such
+        # type, only the two directions, and the sign of the amount says which.
+        transaction_type = "transfer_in" if (printed_amount or 0.0) >= 0 else "transfer_out"
     if transaction_type == "corporate_action":
         # Schwab prints a market value for stock-plan/share movements in
         # the Amount column, but explicitly excludes Other Activity from
@@ -991,6 +995,8 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
         transaction_summary = _current_transaction_summary(lines)
     _reconcile_transaction_summary(transaction_summary, transactions)
     _reconcile_sweep(lines, start, end)
+    parser_common.set_corporate_events(transactions)
+    parser_common.set_directions(transactions)
 
     return {
         "institution": INSTITUTION,

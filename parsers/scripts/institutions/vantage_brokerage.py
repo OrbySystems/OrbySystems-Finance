@@ -192,6 +192,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
             if row:
                 transactions.append(row)
 
+    parser_common.set_directions(transactions)
     return {
         "institution": _INSTITUTION,
         "statementDate": statement_date,

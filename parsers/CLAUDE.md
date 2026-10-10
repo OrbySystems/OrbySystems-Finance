@@ -63,7 +63,7 @@ every bundled parser the way the parsers folder does.
    scrambled or redacted real statement starts provisional. It is verified
    after one clean import of a real statement. orby-core's
    `pkg/parsercatalog` must list it with the same tier.
-4. `python scripts/bank_statement.py <file>` — iterate until institution,
+4. `python scripts/bank_statement.py <file> --strict` (`csv_statement.py` for a CSV; `--strict` turns off backwards-compatible mode so the newer contract rules are errors, as the test suite runs it) — iterate until institution,
    account, accountType, statementDate and every row (date, description,
    correctly-signed amount, running balance) are right.
 5. Add a regression test under `tests/`. Every new parser comes with a

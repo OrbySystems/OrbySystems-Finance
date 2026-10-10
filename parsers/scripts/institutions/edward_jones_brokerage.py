@@ -559,6 +559,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
     _reconcile_activity(controls, transactions, summary)
     _require_close("ending holdings", ending_value, summary["Ending Value"])
 
+    parser_common.set_directions(transactions)
     return {
         "institution": INSTITUTION,
         "statementDate": end.isoformat(),

@@ -153,14 +153,14 @@ def test_client_statement_demo_end_to_end(run_statement) -> None:
     assert len(stmt.brokerage_transactions) == len(want["transactions"])
 
     # Options: OCC codes on the short calls and on every row that trades or
-    # closes one; written contracts are held negative, sold ones leave.
+    # closes one; written contracts are held negative (a holding, so signed); a sale is positive.
     options = [row for row in stmt.brokerage_holdings if row["type"] == "Options"]
     assert options and all(row["quantity"] < 0 for row in options)
     option_rows = [row for row in stmt.brokerage_transactions if "CALL" in row["description"]]
     assert len(option_rows) == 2
     for row in options + option_rows:
         assert parser_common.OCC_SYMBOL.match(row["symbol"]), row
-    assert all(row["quantity"] < 0 for row in stmt.brokerage_transactions if row["transaction_type"] == "sell")
+    assert all(row["quantity"] > 0 for row in stmt.brokerage_transactions if row["transaction_type"] == "sell")
     expired = [row for row in stmt.brokerage_transactions if row["action"] == "Option Expired"]
     assert [(row["transaction_type"], row["subtype"], row["amount"]) for row in expired] == [
         ("corporate_action", "Out", 0.0)

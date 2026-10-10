@@ -539,6 +539,8 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
 
     holdings = _parse_holdings(lines, account, statement_date)
     brokerage_transactions, cash_transactions = _parse_transactions(lines, account, anchor)
+    parser_common.set_corporate_events(brokerage_transactions)
+    parser_common.set_directions(brokerage_transactions)
 
     return {
         "institution": _INSTITUTION,

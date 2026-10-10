@@ -854,6 +854,7 @@ def parse_profile(pages_text: list[str], pdf_path: str, profile_key: str) -> dic
         _reconcile(profile, summary, controls, transactions, holdings_total)
     except ValueError as error:
         raise parser_common.enrich_parser_error(error, **context) from error
+    parser_common.set_directions(transactions)
     return {
         "institution": profile["institution"],
         "statementDate": end.isoformat(),
