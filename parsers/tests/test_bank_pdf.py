@@ -7,8 +7,9 @@ portable regression net that runs everywhere.
 import pytest
 
 import parser_common
+import statement_checks
 from conftest import approx
-from institutions import citi_credit_card
+from institutions import citi_credit_card, citi_credit_card_family
 
 
 def _running_balance(txns, opening):
@@ -102,24 +103,30 @@ def test_citi_costco_synthetic(run_statement):
     assert stmt.statement_date == "2026-09-14"
     assert len(stmt.transactions) == 6
 
+    # In date order, so the latest row carries the New balance.
+    assert [t["date"] for t in stmt.transactions] == sorted(t["date"] for t in stmt.transactions)
     closing = _running_balance(stmt.transactions, -300.00)
     assert approx(closing, -385.00)
+    assert stmt.raw["checkResults"] and all(c["ok"] for c in stmt.raw["checkResults"])
 
-    payment, credit, purchase = stmt.transactions[:3]
+    payment = next(t for t in stmt.transactions if t["description"].startswith("AUTOPAY"))
     assert payment["date"] == "2026-09-10"
-    assert payment["description"].startswith("AUTOPAY")
     assert approx(payment["amount"], 300.00)
-    assert credit["date"] == "2026-09-11"
+    credit = next(t for t in stmt.transactions if t["date"] == "2026-09-11")
     assert approx(credit["amount"], 25.00)
+    purchase = stmt.transactions[0]
     assert purchase["date"] == "2026-08-21"
     assert approx(purchase["amount"], -45.00)
 
 
-def test_citi_costco_rejects_dropped_or_changed_activity(dump_pages):
+def test_citi_costco_holds_changed_activity_for_review(dump_pages):
     pages = dump_pages("citi-costco-synthetic-sample.pdf")
     broken = [page.replace("$250.00", "$251.00") for page in pages]
-    with pytest.raises(ValueError, match="does not reconcile"):
-        citi_credit_card.parse(broken, "unused.pdf")
+    out = citi_credit_card.parse(broken, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]},
+                                        out["statementDate"])
+    assert {r["label"] for r in results if not r["ok"]} == {
+        "Account Summary", "Account Summary: purchases, cash advances, fees and interest"}
 
 
 def test_citi_annual_summary_synthetic(run_statement):
@@ -151,24 +158,27 @@ def test_citi_annual_rejects_changed_complete_category_subtotal(dump_pages):
         citi_credit_card.parse(broken, "unused.pdf")
 
 
-def test_citi_generic_card_layout_is_claimed_for_untested_diagnostics():
+def test_citi_card_layouts_no_parser_reads_are_claimed_for_untested_diagnostics():
     text = """Citi Card
 Payment Due Date 10/15/2026
 Minimum Payment Due $25.00
 Credit Limit $10,000.00
 New Balance $500.00
 """
-    matched, reason = citi_credit_card.detect(text)
+    # citi_credit_card claims only the layouts it reads; the rest are
+    # citi_credit_card_family's, which is untested.
+    assert citi_credit_card.detect(text)[0] is False
+    matched, reason = citi_credit_card_family.detect(text)
     assert matched is True
-    assert "untested Citi credit-card" in reason
+    assert "not yet supported" in reason
 
     with pytest.raises(parser_common.ParserDiagnosticError) as exc:
-        citi_credit_card.parse([text], "unused.pdf")
+        citi_credit_card_family.parse([text], "unused.pdf")
     assert exc.value.diagnostic_code == "PARSER_REQUIRED_DATA_MISSING"
     assert exc.value.diagnostic_stage == "metadata"
     assert exc.value.missing_fields == ("billingPeriod",)
     message, diagnostic = parser_common.parser_failure(
-        citi_credit_card,
+        citi_credit_card_family,
         exc.value,
         "pdf",
         {"pageCount": 1, "textPageCount": 1},
@@ -177,7 +187,8 @@ New Balance $500.00
     # Untested: the failure offers a scrambled copy rather than questions.
     assert "not been confirmed on real statements" in message
     assert "scrambled copy" in message
-    assert diagnostic["parserId"] == "citi_credit_card"
+    assert diagnostic["parserId"] == "citi_credit_card_family"
+    assert diagnostic["institution"] == "Citi"
     assert diagnostic["supportTier"] == "untested"
     assert diagnostic["missingFields"] == ["billingPeriod"]
     assert diagnostic["fieldPresence"]["paymentDueDate"] is True
