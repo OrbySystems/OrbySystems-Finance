@@ -34,7 +34,7 @@ README_addparser.md has every parser's tier, generated from its Go catalog.
 
 | Institution / statement family | Status | Current scope |
 |---|---|---|
-| Fidelity Investments / NetBenefits | **Verified** | Brokerage PDF, combined household and year-end variants, NetBenefits 401(k) PDF (including omitted zero-value rows, signed zero-net Exchange rows, and both dividend reconciliation conventions), and positions CSV |
+| Fidelity Investments / NetBenefits | **Verified** | Brokerage PDF, combined household and year-end variants, NetBenefits 401(k) Statement Details PDF (holdings only: names wrapped over two lines, stable-value funds without shares, sold-out funds dropped, checked against Account Totals; transactions come from the NetBenefits Transaction History CSV), and positions CSV |
 | Charles Schwab | **Verified** | Retirement Plan Services quarterly 401(k) PDF validated against a production statement; retail brokerage PDF remains provisional |
 | Vanguard | **Provisional** | Voyager and Personal Investor brokerage PDFs plus Custom Activity CSV/XLSX |
 | Fidelity Rewards Visa (Elan Financial Services) | **Verified** | Monthly credit card statement, built from a scrambled real statement and confirmed by a clean import of a real one: account payments and fees, then each card's purchases, credits and fees, every card read as the one account; detail lines folded into the row above; statement checks for every section total, the Activity Summary's payments and credits and its purchases, fees and interest, Previous Balance + activity = New Balance, and lines not read. Demo statement: `fidelity-credit-card-synthetic-sample.pdf` |

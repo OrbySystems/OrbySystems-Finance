@@ -18,6 +18,13 @@ X = 36
 OUT_NAME = "fidelity-401k-brokerage-pdf-synthetic-sample.pdf"
 ZERO_OMITTED_OUT_NAME = "fidelity-401k-zero-omitted-synthetic-sample.pdf"
 GENERIC_EXCHANGE_OUT_NAME = "fidelity-401k-generic-exchange-synthetic-sample.pdf"
+STATEMENT_DETAILS_OUT_NAME = "fidelity-401k-statement-details-synthetic-sample.pdf"
+
+# A line entry can also be ("raw", [(x, dy, text), ...], advance): each text
+# drawn dy points above the current line, then the line moved down by
+# advance - for the wrapped fund names below, whose lines sit a fraction of
+# a line above and below their row of figures. PAGE_BREAK starts a new page.
+PAGE_BREAK = "\f"
 
 
 LINES = [
@@ -161,6 +168,80 @@ GENERIC_EXCHANGE_LINES = [
 ]
 
 
+# The NetBenefits "Statement Details" layout (Q3 2026 sample): fund names
+# wrap over two lines of the Investment column, centred on the row of
+# figures, so one line of a name can sit above the figures and one below;
+# a category label sits a full line above the first fund in it; the table
+# runs onto a second page with its headings repeated. The positions follow
+# a scrambled real statement: name lines about 8pt apart, a label about
+# 13.5pt above the figures. No account number is printed. Invented funds
+# and figures throughout; they add up.
+FIGURES = 330
+_HEADINGS = [
+    [(36, "Shares/Units"), (226, "Shares/Units")],
+    [(36, "Price as of"), (226, "Price as of Market Value as Market Value as")],
+    [(36, "Investment as of as of")],
+    [(36, "06/30/2026 09/30/2026 of 06/30/2026 of 09/30/2026")],
+]
+
+
+def _fund(first: tuple[float, str], second: tuple[float, str], figures: str) -> tuple:
+    return ("raw", [(72, first[0], first[1]), (72, second[0], second[1]), (FIGURES, 0, figures)], 22)
+
+
+STATEMENT_DETAILS_LINES = [
+    "10/3/26, 9:47 AM Fidelity NetBenefits - Statement Details",
+    "Statement Details",
+    "Synthetic Widget Company 401(k)",
+    "Retirement Savings Statement",
+    "Your Account Summary",
+    "Statement Period: 07/01/2026 to 09/30/2026",
+    "Beginning Balance $50,000.00",
+    "Withdrawals -$5,000.00",
+    "Fees $0.00",
+    "Change In Market Value $1,650.00",
+    "Ending Balance $46,650.00",
+    "",
+    "Market Value of Your Account",
+    "Statement Period: 07/01/2026 to 09/30/2026",
+    *_HEADINGS,
+    [(120, "CORE OPTIONS AND SYNTHETIC CO STK")],
+    [(72, "Stock"), (420, "$30,000.00 $31,500.00")],
+    ("raw", [(72, 1.5, "Large Cap")], 13.5),
+    # The first line of the name on the figures' line, the second below it.
+    _fund((2.8, "Synthetic Total"), (-5.0, "Market Index K"),
+          "200.000 200.000 $100.00 $105.00 $20,000.00 $21,000.00"),
+    # The first line of the name above the figures, the second on their line.
+    _fund((5.6, "Synthetic"), (-2.2, "Growth Pool K"),
+          "100.000 100.000 $100.00 $105.00 $10,000.00 $10,500.00"),
+    "https://example.invalid/statement 1/2",
+    PAGE_BREAK,
+    "10/3/26, 9:47 AM Fidelity NetBenefits - Statement Details",
+    *_HEADINGS,
+    [(72, "Bond"), (420, "$15,000.00 $15,150.00")],
+    ("raw", [(72, 1.5, "Stable Value")], 13.5),
+    # A stable-value fund carried at its value: no shares, no price.
+    _fund((2.8, "Synthetic Stable"), (-5.0, "Value Fund"), "N/A N/A N/A N/A $15,000.00 $15,150.00"),
+    [(72, "Blended Fund Investments*"), (420, "$5,000.00 $0.00")],
+    # Sold out during the quarter: it prints, at $0.00, and is not held.
+    _fund((2.8, "Synthetic Target"), (-5.0, "Date 2030 K"), "50.000 0.000 $100.00 $102.00 $5,000.00 $0.00"),
+    [(72, "Account Totals"), (420, "$50,000.00 $46,650.00")],
+    "",
+    "Your Current Investment Elections as of 10/03/2026",
+    "SYNTHETIC TOTAL MARKET INDEX K 60%",
+    "SYNTHETIC GROWTH POOL K 40%",
+    "",
+    "Your Account Activity",
+    "Statement Period: 07/01/2026 to 09/30/2026",
+    "Detailed Transaction History",
+    [(248, "Synthetic"), (332, "Synthetic"), (420, "Total")],
+    [(144, "Activity")],
+    [(144, "Beginning Balance"), (248, "$20,000.00"), (332, "$10,000.00"), (420, "$50,000.00")],
+    [(144, "Ending Balance"), (248, "$21,000.00"), (332, "$10,500.00"), (420, "$46,650.00")],
+    "https://example.invalid/statement 2/2",
+]
+
+
 def escape(s: str) -> bytes:
     return s.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)").encode("latin-1", "replace")
 
@@ -181,27 +262,42 @@ def build_pdf(lines: list, path: str) -> None:
         out.extend(body)
         out.extend(b"\nendobj\n")
 
-    add_obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
-    add_obj(2, b"<< /Type /Pages /Kids [4 0 R] /Count 1 >>")
-    add_obj(3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    add_obj(
-        4,
-        (
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] "
-            "/Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>" % (PAGE_W, PAGE_H)
-        ).encode(),
-    )
-
-    stream = bytearray()
+    streams: list[bytearray] = [bytearray()]
     y = PAGE_H - 45
     for line in lines:
+        stream = streams[-1]
+        if line == PAGE_BREAK:
+            streams.append(bytearray())
+            y = PAGE_H - 45
+            continue
+        if isinstance(line, tuple) and line and line[0] == "raw":
+            _, items, advance = line
+            for x, dy, text in items:
+                draw_text(stream, text, x, y + dy)
+            y -= advance
+            continue
         if isinstance(line, list):
             for x, text in line:
                 draw_text(stream, text, x, y)
         elif line:
             draw_text(stream, line, X, y)
         y -= LINE_H
-    add_obj(5, b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + bytes(stream) + b"endstream")
+
+    # Objects: 1 catalog, 2 pages, 3 font, then a page and its content per page.
+    page_nums = [4 + 2 * i for i in range(len(streams))]
+    add_obj(1, b"<< /Type /Catalog /Pages 2 0 R >>")
+    kids = " ".join(f"{n} 0 R" for n in page_nums)
+    add_obj(2, f"<< /Type /Pages /Kids [{kids}] /Count {len(page_nums)} >>".encode())
+    add_obj(3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for n, stream in zip(page_nums, streams):
+        add_obj(
+            n,
+            (
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] "
+                "/Resources << /Font << /F1 3 0 R >> >> /Contents %d 0 R >>" % (PAGE_W, PAGE_H, n + 1)
+            ).encode(),
+        )
+        add_obj(n + 1, b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + bytes(stream) + b"endstream")
 
     xref_pos = len(out)
     count = max(offsets) + 1
@@ -219,7 +315,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--variant",
-        choices=("all", "baseline", "zero-omitted", "generic-exchange"),
+        choices=("all", "baseline", "zero-omitted", "generic-exchange", "statement-details"),
         default="all",
     )
     args = parser.parse_args()
@@ -228,6 +324,7 @@ def main() -> None:
         "baseline": (OUT_NAME, LINES),
         "zero-omitted": (ZERO_OMITTED_OUT_NAME, ZERO_OMITTED_LINES),
         "generic-exchange": (GENERIC_EXCHANGE_OUT_NAME, GENERIC_EXCHANGE_LINES),
+        "statement-details": (STATEMENT_DETAILS_OUT_NAME, STATEMENT_DETAILS_LINES),
     }
     selected = variants.values() if args.variant == "all" else (variants[args.variant],)
     for name, lines in selected:
