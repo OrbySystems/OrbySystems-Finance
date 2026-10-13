@@ -15,7 +15,10 @@ PARSER_FILE = "empower_401k_pdf.py"
 
 
 def _module(request):
-    path = Path(request.config.getoption("--extra-parsers-dir")) / PARSER_FILE
+    # --extra-parsers-dir is unset in a plain run; the bundled copy is then the one under test.
+    extra = request.config.getoption("--extra-parsers-dir")
+    folder = Path(extra) if extra else Path(__file__).resolve().parents[1] / "scripts" / "institutions"
+    path = folder / PARSER_FILE
     spec = importlib.util.spec_from_file_location("empower_plan_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

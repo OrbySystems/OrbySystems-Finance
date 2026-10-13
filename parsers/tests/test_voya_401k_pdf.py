@@ -1,11 +1,11 @@
 """Voya 401(k) plan statement parser coverage (synthetic fixture)."""
 from conftest import approx
 
-FIXTURE = "voya-brokerage-pdf-synthetic-sample.pdf"
+FIXTURE = "voya-401k-pdf-synthetic-sample.pdf"
 
 
 def test_voya_synthetic_statement(run_statement):
-    stmt = run_statement(FIXTURE, "--expected-parser", "voya-brokerage-pdf.py")
+    stmt = run_statement(FIXTURE, "--expected-parser", "voya-401k-pdf.py")
     assert stmt.institution == "Voya"
     assert stmt.statement_date == "2030-03-31"
     assert len(stmt.brokerage_transactions) == 0

@@ -23,7 +23,7 @@ import parser_common
 from institutions import common
 
 KIND = parser_common.KIND_BROKERAGE
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 INSTITUTION = "Voya"
 _ACCOUNT_TYPE = "401(k)"
 _EPS = 0.02
