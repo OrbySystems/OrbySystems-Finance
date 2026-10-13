@@ -8,6 +8,15 @@ The statement prints a period-level balance bridge and a per-fund snapshot:
     <fund name> $545,087.19 $0.00 $994.70 $548,199.15 667.3633 $39.7895
     Total       $545,087.19 $0.00 $3,111.96 $548,199.15
 
+A fund with no unit value - typically the plan's fixed/stable-value account -
+prints N/A in both the Shares and Price columns and is still a holding:
+
+    Voya Fixed Account $46,692.19 $0.00 $656.46 $47,963.44 N/A N/A
+
+Such a row carries no quantity/price, only its balance. (The original parser
+required numeric shares/price, dropped this row, and then failed its Total
+reconciliation.)
+
 It prints no itemized transactions, so only brokerage_holdings is returned.
 Funds carry no ticker, so the fund name is used as the symbol. The fund
 ending balances are checked against the printed Total and the headline
@@ -38,10 +47,12 @@ _PERIOD_RE = re.compile(
     rf"({_MONTHS})\s+(\d{{1,2}}),\s*(\d{{4}})\s*-\s*({_MONTHS})\s+(\d{{1,2}}),\s*(\d{{4}})"
 )
 _MONEY = r"-?\$[\d,]+\.\d{2}"
+_NA = r"N/A|--"
 _HOLDING_RE = re.compile(
     rf"^(?P<name>.+?)\s+(?P<begin>{_MONEY})\s+(?P<contrib>{_MONEY})\s+(?P<gain>{_MONEY})\s+"
-    rf"(?P<end>{_MONEY})\s+(?P<shares>[\d,]+(?:\.\d+)?)\s+(?P<price>\$[\d,]+(?:\.\d+)?)$"
+    rf"(?P<end>{_MONEY})\s+(?P<shares>[\d,]+(?:\.\d+)?|{_NA})\s+(?P<price>\$[\d,]+(?:\.\d+)?|{_NA})$"
 )
+_MONEY_TOKEN_RE = re.compile(_MONEY)
 _TOTAL_RE = re.compile(rf"^Total\s+{_MONEY}\s+{_MONEY}\s+{_MONEY}\s+(?P<end>{_MONEY})$")
 _BALANCE_RE = re.compile(rf"Account Balance on \d{{2}}/\d{{2}}/\d{{4}}\s+(?P<amt>{_MONEY})")
 _PLAN_RE = re.compile(r"Activity Statement for Your 401\(K\) Plan\s+([A-Za-z0-9]+)", re.I)
@@ -75,6 +86,25 @@ def _statement_date(text: str) -> str:
         return ""
 
 
+def _number(raw: str) -> float | None:
+    """A numeric Shares/Price cell, or None for a printed N/A."""
+    return None if re.fullmatch(_NA, raw) else common.parse_amount(raw)
+
+
+def _holding(m: re.Match) -> dict:
+    name = re.sub(r"\s+", " ", m.group("name")).strip()
+    row = {"symbol": name.upper(), "description": name}
+    for key, group in (("quantity", "shares"), ("price", "price")):
+        value = _number(m.group(group))
+        if value is not None:
+            row[key] = value
+    row["current_value"] = common.parse_amount(m.group("end"))
+    # A fund priced per unit is a mutual fund/CIT; one with no units (N/A) is
+    # a fixed or stable-value account carried at its balance.
+    row["type"] = "Mutual Fund" if "quantity" in row else "Fixed Account"
+    return row
+
+
 def _fail(message: str, code: str = "PARSER_REQUIRED_DATA_MISSING", stage: str = "parsing"):
     return parser_common.ParserDiagnosticError(message, code=code, stage=stage)
 
@@ -102,15 +132,14 @@ def parse(pages_text: list[str], pdf_path: str) -> dict:
             break
         m = _HOLDING_RE.match(line)
         if m:
-            name = re.sub(r"\s+", " ", m.group("name")).strip()
-            holdings.append({
-                "symbol": name.upper(),
-                "description": name,
-                "quantity": common.parse_amount(m.group("shares")),
-                "price": common.parse_amount(m.group("price")),
-                "current_value": common.parse_amount(m.group("end")),
-                "type": "Mutual Fund",
-            })
+            holdings.append(_holding(m))
+        elif len(_MONEY_TOKEN_RE.findall(line)) >= 4:
+            # A balance-bridge row in a shape we don't know: fail here, naming
+            # it, rather than at the Total check with a short sum.
+            raise _fail(
+                f"Unrecognized Voya portfolio row: {line!r}",
+                code="PARSER_RECONCILIATION_FAILED", stage="holdings",
+            )
 
     if not holdings:
         raise _fail("No fund rows found in the Voya investment portfolio table.")
