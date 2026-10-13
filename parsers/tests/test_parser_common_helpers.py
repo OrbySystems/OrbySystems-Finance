@@ -55,3 +55,24 @@ class HeaderRowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _retail(**row):
+    base = {"date": "2026-03-02", "description": "Sample item", "amount": -10.0, "order_id": "A-1",
+            "line_type": "purchase"}
+    base.update(row)
+    return {"institution": "Sample Store", "statementDate": "", "tables": {"retail_items": [base]}}
+
+
+def test_a_retail_row_says_whether_it_is_a_purchase_or_a_refund():
+    import pytest
+
+    parser_common.validate_multi_table_parse_result(_retail(), "m")
+    parser_common.validate_multi_table_parse_result(_retail(line_type="refund", amount=10.0), "m")
+    missing = _retail()
+    del missing["tables"]["retail_items"][0]["line_type"]
+    for bad, says in ((missing, "missing key"), (_retail(line_type="return"), "must be one of"),
+                      (_retail(line_type="refund"), "money back is positive"),
+                      (_retail(amount=10.0), "money spent is negative")):
+        with pytest.raises(ValueError, match=says):
+            parser_common.validate_multi_table_parse_result(bad, "m")

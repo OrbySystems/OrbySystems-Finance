@@ -1,0 +1,8 @@
+Creation Date,Currency,Direct Debit Refund Amount,Disbursement Type,Order ID,Payment Status,Quantity,Refund Amount,Refund Date,Reversal Amount State,Reversal Reason,Reversal Status,Website
+2026-03-20T10:00:00.000Z,USD,0,Refund,111-0000002-0000002,Completed,1,136.78,2026-03-22T08:30:00.000Z,Final,Customer return,Completed,Amazon.com
+2026-04-10T09:00:00Z,USD,0,Refund,111-0000003-0000003,Completed,1,9.80,2026-04-12T11:00:00Z,Final,Customer return,Completed,Amazon.com
+2026-04-15T09:00:00Z,USD,0,Refund,111-0000003-0000003,Completed,1,9.80,2026-04-12T11:00:00Z,Final,Customer return,Completed,Amazon.com
+2026-04-10T09:00:00Z,USD,0,Refund,111-0000003-0000003,Completed,1,4.5,2026-04-18T14:00:00Z,Final,Item shipped late,Completed,Amazon.com
+2026-04-15T09:00:00Z,USD,0,Refund,111-0000003-0000003,Completed,1,4.5,2026-04-18T14:00:00Z,Final,Item shipped late,Completed,Amazon.com
+2026-05-03T09:00:00Z,USD,0,Refund,111-0000006-0000006,Pending,1,13.08,2026-05-04T09:00:00Z,Final,Customer return,Completed,Amazon.com
+2026-04-25T05:00:00.000Z,INR,0,Refund,404-0000005-0000005,Completed,1,"1,899.00",2026-04-27T05:00:00.000Z,Final,Item not received,Completed,Amazon.in
