@@ -171,8 +171,9 @@ GENERIC_EXCHANGE_LINES = [
 # The NetBenefits "Statement Details" layout (Q3 2026 sample): fund names
 # wrap over two lines of the Investment column, centred on the row of
 # figures, so one line of a name can sit above the figures and one below;
-# a category label sits a full line above the first fund in it; the table
-# runs onto a second page with its headings repeated. The positions follow
+# a class heading prints with its subtotals and a label sits a full line
+# above the first fund under it; the table runs onto a second page with its
+# column headings repeated but not the class heading. The positions follow
 # a scrambled real statement: name lines about 8pt apart, a label about
 # 13.5pt above the figures. No account number is printed. Invented funds
 # and figures throughout; they add up.
@@ -196,17 +197,18 @@ STATEMENT_DETAILS_LINES = [
     "Retirement Savings Statement",
     "Your Account Summary",
     "Statement Period: 07/01/2026 to 09/30/2026",
-    "Beginning Balance $50,000.00",
-    "Withdrawals -$5,000.00",
+    "Beginning Balance $52,000.00",
+    "Exchange In $5,100.00",
+    "Exchange Out -$5,100.00",
     "Fees $0.00",
-    "Change In Market Value $1,650.00",
-    "Ending Balance $46,650.00",
+    "Change In Market Value $1,950.00",
+    "Ending Balance $53,950.00",
     "",
     "Market Value of Your Account",
     "Statement Period: 07/01/2026 to 09/30/2026",
     *_HEADINGS,
     [(120, "CORE OPTIONS AND SYNTHETIC CO STK")],
-    [(72, "Stock"), (420, "$30,000.00 $31,500.00")],
+    [(72, "Stock"), (420, "$32,000.00 $33,700.00")],
     ("raw", [(72, 1.5, "Large Cap")], 13.5),
     # The first line of the name on the figures' line, the second below it.
     _fund((2.8, "Synthetic Total"), (-5.0, "Market Index K"),
@@ -218,14 +220,19 @@ STATEMENT_DETAILS_LINES = [
     PAGE_BREAK,
     "10/3/26, 9:47 AM Fidelity NetBenefits - Statement Details",
     *_HEADINGS,
+    # Still the Stock class, carried over the page break unprinted.
+    ("raw", [(72, 1.5, "Company Stock")], 13.5),
+    _fund((2.8, "Synthetic Widget"), (-5.0, "Co Stock Fund"), "50.000 50.000 $40.00 $44.00 $2,000.00 $2,200.00"),
     [(72, "Bond"), (420, "$15,000.00 $15,150.00")],
     ("raw", [(72, 1.5, "Stable Value")], 13.5),
     # A stable-value fund carried at its value: no shares, no price.
     _fund((2.8, "Synthetic Stable"), (-5.0, "Value Fund"), "N/A N/A N/A N/A $15,000.00 $15,150.00"),
-    [(72, "Blended Fund Investments*"), (420, "$5,000.00 $0.00")],
+    [(72, "Blended Fund Investments*"), (420, "$5,000.00 $5,100.00")],
     # Sold out during the quarter: it prints, at $0.00, and is not held.
     _fund((2.8, "Synthetic Target"), (-5.0, "Date 2030 K"), "50.000 0.000 $100.00 $102.00 $5,000.00 $0.00"),
-    [(72, "Account Totals"), (420, "$50,000.00 $46,650.00")],
+    # Bought with the proceeds.
+    _fund((2.8, "Synthetic Target"), (-5.0, "Date 2045 K"), "0.000 100.000 $50.00 $51.00 $0.00 $5,100.00"),
+    [(72, "Account Totals"), (420, "$52,000.00 $53,950.00")],
     "",
     "Your Current Investment Elections as of 10/03/2026",
     "SYNTHETIC TOTAL MARKET INDEX K 60%",
@@ -236,8 +243,8 @@ STATEMENT_DETAILS_LINES = [
     "Detailed Transaction History",
     [(248, "Synthetic"), (332, "Synthetic"), (420, "Total")],
     [(144, "Activity")],
-    [(144, "Beginning Balance"), (248, "$20,000.00"), (332, "$10,000.00"), (420, "$50,000.00")],
-    [(144, "Ending Balance"), (248, "$21,000.00"), (332, "$10,500.00"), (420, "$46,650.00")],
+    [(144, "Beginning Balance"), (248, "$20,000.00"), (332, "$10,000.00"), (420, "$52,000.00")],
+    [(144, "Ending Balance"), (248, "$21,000.00"), (332, "$10,500.00"), (420, "$53,950.00")],
     "https://example.invalid/statement 2/2",
 ]
 

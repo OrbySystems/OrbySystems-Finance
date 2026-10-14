@@ -56,6 +56,10 @@ def test_baseline_holdings(run_statement):
     assert [h["description"] for h in holdings] == [
         "Synthetic Growth Index Fund", "Blue Horizon Bond Pool", "Stable Value Income Fd",
     ]
+    # This layout prints its category labels without class headings, so
+    # the label is the classification.
+    assert [h.get("subtype") for h in holdings] == ["INDEX FUNDS (PASSIVELY MANAGED)", "Bond", "Income"]
+    assert not any("sector" in h for h in holdings)
     assert all(h["account"] == "2468" and h["accountType"] == "401(k)" for h in holdings)
     growth = holdings[0]
     assert growth["symbol"] == "SYNTHETIC GROWTH INDEX FUND"
@@ -84,39 +88,62 @@ def test_generic_exchange_holdings(run_statement):
 
 def test_statement_details_wrapped_names_and_labels(run_statement):
     # The Q3 2026 layout: names wrapped over two lines, either line on the
-    # figures' line; category labels just above the first fund; the table
-    # carried onto a second page; no account number printed.
+    # figures' line; class headings with subtotals and labels above the
+    # first fund under them; the table carried onto a second page; no
+    # account number printed.
     stmt = run_statement(STATEMENT_DETAILS, "--expected-parser", PARSER)
     holdings = _holdings(stmt)
     assert stmt.statement_date == "2026-09-30"
     assert [h["description"] for h in holdings] == [
-        "Synthetic Total Market Index K", "Synthetic Growth Pool K", "Synthetic Stable Value Fund",
+        "Synthetic Total Market Index K", "Synthetic Growth Pool K", "Synthetic Widget Co Stock Fund",
+        "Synthetic Stable Value Fund", "Synthetic Target Date 2045 K",
     ]
     assert all(h["account"] == "" and h["accountType"] == "401(k)" for h in holdings)
 
-    stable = holdings[2]
+    stable = holdings[3]
     assert stable["type"] == "Fixed Account"
     assert "quantity" not in stable and "price" not in stable
     assert approx(stable["current_value"], 15150.0)
     # The fund sold out during the quarter prints at $0.00 and is not held.
-    assert not any("Target" in h["description"] for h in holdings)
-    assert approx(sum(h["current_value"] for h in holdings), 46650.0)
+    assert not any("2030" in h["description"] for h in holdings)
+    assert approx(sum(h["current_value"] for h in holdings), 53950.0)
+
+
+def test_statement_details_classes_from_headings(run_statement):
+    # Each fund carries the class heading it is filed under and the label
+    # under that heading - including the Company Stock fund at the top of
+    # page 2, whose Stock heading was printed on page 1 only.
+    holdings = _holdings(run_statement(STATEMENT_DETAILS, "--expected-parser", PARSER))
+    classes = [(h["type"], h.get("subtype"), h.get("sector")) for h in holdings]
+    assert classes == [
+        ("Mutual Fund", "Stock", "Large Cap"),
+        ("Mutual Fund", "Stock", "Large Cap"),
+        ("Stock", "Stock", "Company Stock"),
+        ("Fixed Account", "Bond", "Stable Value"),
+        ("Mutual Fund", "Blended Fund Investments", None),
+    ]
 
 
 def test_text_only_keeps_the_figures_line_name(request, dump_pages):
     # Without the PDF a wrapped name keeps only its part on the figures'
-    # line; the values are the same.
+    # line, and only the class headings can be read - a label line looks
+    # like part of a name. The values are the same.
     parser = _load_parser(request)
     result = parser.parse(dump_pages(STATEMENT_DETAILS), "")
     holdings = result["tables"]["brokerage_holdings"]
-    assert [h["description"] for h in holdings] == ["Synthetic Total", "Growth Pool K", "Synthetic Stable"]
-    assert approx(sum(h["current_value"] for h in holdings), 46650.0)
+    assert [h["description"] for h in holdings] == [
+        "Synthetic Total", "Growth Pool K", "Synthetic Widget", "Synthetic Stable", "Synthetic Target",
+    ]
+    assert [h.get("subtype") for h in holdings] == ["Stock", "Stock", "Stock", "Bond", "Blended Fund Investments"]
+    assert not any("sector" in h for h in holdings)
+    assert approx(sum(h["current_value"] for h in holdings), 53950.0)
 
 
 def test_totals_mismatch_fails(request, dump_pages):
     parser = _load_parser(request)
-    pages = [p.replace("Account Totals $50,000.00 $46,650.00", "Account Totals $50,000.00 $46,000.00")
+    pages = [p.replace("Account Totals $52,000.00 $53,950.00", "Account Totals $52,000.00 $53,000.00")
              for p in dump_pages(STATEMENT_DETAILS)]
+    assert pages != dump_pages(STATEMENT_DETAILS)
     with pytest.raises(parser_common.ParserDiagnosticError) as raised:
         parser.parse(pages, "")
     assert raised.value.diagnostic_code == "PARSER_RECONCILIATION_FAILED"
