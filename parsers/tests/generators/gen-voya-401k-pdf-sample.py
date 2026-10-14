@@ -2,14 +2,14 @@
 """Generate a fictional Voya-style 401(k) plan activity statement.
 
 Invented plan, participant, funds and figures; labels and table layout match
-the real format. Output: voya-brokerage-pdf-synthetic-sample.pdf next to this file.
+the real format. Output: voya-401k-pdf-synthetic-sample.pdf next to this file.
 """
 from pathlib import Path
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-OUT = Path(__file__).resolve().parent / "voya-brokerage-pdf-synthetic-sample.pdf"
+OUT = Path(__file__).resolve().parent / "voya-401k-pdf-synthetic-sample.pdf"
 
 FUNDS = [  # name, begin, gain, end, shares, price
     ("Synthetic Index Fund A", "$10,000.00", "$250.00", "$10,500.00", "100.0000", "$105.0000"),
