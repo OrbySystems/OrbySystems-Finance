@@ -33,6 +33,18 @@ above them (about 13pt). With the PDF available the names are read from
 word positions (`_holdings_from_pdf`); without it (a text-only test) from
 the figures' line alone.
 
+**What each fund is comes from the statement.** The table files every fund
+under a class heading printed with its subtotals ("Stock", "Bond",
+"Blended Fund Investments*"), often with a label under it ("Large Cap",
+"International", "Company Stock", "Stable Value"); an older layout prints
+the labels alone. Each holding carries the heading as `subtype` (the
+label when no heading is printed) and the label under a heading as
+`sector`, and orby-core's securities table turns those into its classes.
+A fund under "Company Stock" is the employer's own stock and is typed
+`Stock`; the rest are typed by how they are priced, as before. Revisions
+up to 5 matched these headings only to skip them, which left every fund
+in this format unclassified.
+
 No account number is printed: `account` is left blank, as in the CSV
 export, and the app asks for its last four digits on import.
 """
@@ -80,6 +92,11 @@ _HOLDING_ROW_RE = re.compile(
 _FIGURE_RE = re.compile(rf"^(?:{_QTY}|{_PRICE}|{_VALUE})$")
 _SECTION_START = "market value of your account"
 _TOTALS_RE = re.compile(rf"^Account Totals\s+({_VALUE})\s+({_VALUE})$")
+# A class heading with its beginning and ending subtotals: "Stock $30,000.00
+# $31,500.00". Checked after Account Totals, which has the same shape.
+_SUBTOTAL_RE = re.compile(rf"^(?P<label>[A-Za-z][^$]*?)\s+{_VALUE}\s+{_VALUE}$")
+# Labels that mean the employer's own stock, held as a unitized fund.
+_COMPANY_STOCK_LABELS = {"company stock", "employer stock"}
 # The table's own column headings and the browser's page header and footer,
 # none of which is part of a fund's name.
 _HEADER_RE = re.compile(
@@ -122,12 +139,17 @@ def _account(text: str) -> str:
     return common.last4_digits(match.group(1)) if match else ""
 
 
+def _label(text: str) -> str:
+    """A heading or label as printed, without its footnote marker."""
+    return re.sub(r"\s*\*+$", "", re.sub(r"\s+", " ", text)).strip()
+
+
 def _figure(raw: str) -> float | None:
     """A Shares or Price cell, or None for a printed N/A."""
     return None if raw == "N/A" else common.parse_amount(raw.replace("$", ""))
 
 
-def _holding(name: str, m: re.Match, statement_date: str) -> dict:
+def _holding(name: str, m: re.Match, statement_date: str, heading: str = "", label: str = "") -> dict:
     name = re.sub(r"\s+", " ", name).strip()
     # A plan fund has no ticker: its name is its symbol, as in the CSV export.
     row = {"symbol": re.sub(r"\s+", " ", re.sub(r"[^A-Z0-9&*.-]+", " ", name.upper())).strip(),
@@ -142,7 +164,20 @@ def _holding(name: str, m: re.Match, statement_date: str) -> dict:
         row["price_as_of"] = statement_date
     # A fund priced per share is a mutual fund or collective trust; one with
     # no shares (N/A) is a fixed or stable-value account carried at its value.
-    row["type"] = "Mutual Fund" if "quantity" in row else "Fixed Account"
+    # One filed under Company Stock is the employer's stock, whatever its
+    # wrapper: that is the exposure a question about it is asking after.
+    if "quantity" not in row:
+        row["type"] = "Fixed Account"
+    elif {heading.lower(), label.lower()} & _COMPANY_STOCK_LABELS:
+        row["type"] = "Stock"
+    else:
+        row["type"] = "Mutual Fund"
+    # The statement's own classification: the class heading, or the label
+    # when the layout prints no heading, and the label under a heading.
+    if heading or label:
+        row["subtype"] = heading or label
+    if heading and label:
+        row["sector"] = label
     return row
 
 
@@ -152,6 +187,9 @@ def _holdings_from_text(pages_text: list[str], statement_date: str) -> tuple[lis
     holdings: list[dict] = []
     total = None
     in_section = False
+    # Only the headings: a label line cannot be told from part of a wrapped
+    # name in text alone.
+    heading = ""
     for text in pages_text:
         for raw in text.splitlines():
             line = re.sub(r"\s+", " ", raw).strip()
@@ -166,7 +204,11 @@ def _holdings_from_text(pages_text: list[str], statement_date: str) -> tuple[lis
                 return holdings, total
             m = _HOLDING_ROW_RE.match(line)
             if m:
-                holdings.append(_holding(m.group("name"), m, statement_date))
+                holdings.append(_holding(m.group("name"), m, statement_date, heading))
+                continue
+            subtotal = _SUBTOTAL_RE.match(line)
+            if subtotal:
+                heading = _label(subtotal.group("label"))
     return holdings, total
 
 
@@ -195,10 +237,15 @@ def _holdings_from_pdf(pdf_path: str, statement_date: str) -> tuple[list[dict], 
     total = None
     in_section = False
     found = False
+    # The class heading and the label under it that the next fund is filed
+    # under. Carried across pages: a class can run onto the next page
+    # without its heading being printed again.
+    heading = label = ""
     with pdf:
         for page in pdf.pages:
             rows = []      # (top, match, the name words on the figures' line)
             names = []     # (top, words) of lines holding only text
+            events = []    # (top, kind, value), for filing each row
             for top, words in _lines(page):
                 text = " ".join(w["text"] for w in words)
                 if _SECTION_START in text.lower():
@@ -215,20 +262,33 @@ def _holdings_from_pdf(pdf_path: str, statement_date: str) -> tuple[list[dict], 
                 if m:
                     first_figure = next(i for i, w in enumerate(words) if _FIGURE_RE.match(w["text"]))
                     rows.append((top, m, words[:first_figure]))
+                    events.append((top, "row", len(rows) - 1))
+                    continue
+                subtotal = _SUBTOTAL_RE.match(text)
+                if subtotal:
+                    events.append((top, "heading", _label(subtotal.group("label"))))
                 elif not _MONEY_RE.search(text) and not _HEADER_RE.match(text):
                     names.append((top, words))
             # Each text line goes to the nearest row of figures within half a
             # line; one farther away is a category label or a heading.
             parts: list[list[dict]] = [list(own) for _, _, own in rows]
             for top, words in names:
-                if not rows:
-                    break
-                nearest = min(range(len(rows)), key=lambda i: abs(rows[i][0] - top))
-                if abs(rows[nearest][0] - top) <= _NAME_BAND:
+                nearest = min(range(len(rows)), key=lambda i: abs(rows[i][0] - top)) if rows else None
+                if nearest is not None and abs(rows[nearest][0] - top) <= _NAME_BAND:
                     parts[nearest].extend(words)
-            for (_, m, _), words in zip(rows, parts):
+                else:
+                    events.append((top, "label", _label(" ".join(w["text"] for w in words))))
+            filed: dict[int, tuple[str, str]] = {}
+            for _, kind, value in sorted(events, key=lambda e: e[0]):
+                if kind == "heading":
+                    heading, label = value, ""
+                elif kind == "label":
+                    label = value
+                else:
+                    filed[value] = (heading, label)
+            for i, ((_, m, _), words) in enumerate(zip(rows, parts)):
                 ordered = sorted(words, key=lambda w: (round(w["top"]), w["x0"]))
-                holdings.append(_holding(" ".join(w["text"] for w in ordered), m, statement_date))
+                holdings.append(_holding(" ".join(w["text"] for w in ordered), m, statement_date, *filed[i]))
             if total is not None:
                 break
     if not found:
