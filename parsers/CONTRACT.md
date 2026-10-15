@@ -356,6 +356,55 @@ disposal, put it in `realized_gain`, signed (a loss is negative), and set
 (`tables = {"cash_transactions": transactions}`) before printing, so
 consumers see one output shape regardless of which kind matched.
 
+## `parse()` — `KIND_RETAIL`
+
+A retailer's own record of what was bought (an order history export, a
+receipt), one row per item. The module sets `KIND =
+parser_common.KIND_RETAIL` and returns the same `tables` envelope a
+`KIND_BROKERAGE` module does, with the one table `retail_items`:
+
+```python
+KIND = parser_common.KIND_RETAIL
+def parse(pages_text: list[str], pdf_path: str) -> dict        # institutions/
+def parse(rows: list[dict[str, str]], csv_path: str) -> dict   # csv_institutions/
+```
+
+Result — **exactly** `institution` (the retailer), `statementDate`
+(`""` for an export with no date of its own), `tables`, and optionally
+`checks`. Each `retail_items` row:
+
+| key | type | notes |
+|---|---|---|
+| `date` | `str` | `YYYY-MM-DD`, the day of the order or purchase |
+| `description` | `str` | the item as the retailer names it; non-empty |
+| `amount` | `int`/`float` | the line in full: items, their tax, the line's shipping, less its discounts. Negative is money spent, positive a refund |
+| `order_id` | `str` | the retailer's order or receipt number. On a refund, the order it gives money back for |
+| `line_type` | `str` | `"purchase"` or `"refund"`. Required, and checked against the sign of `amount` |
+| `quantity`, `unit_price`, `tax`, `shipping`, `discount` | number or `null` | optional. `tax` is the line's, not one unit's. `discount` as printed |
+| `charge_group` | `str` | optional. Names the rows the retailer charged together (a shipment, a receipt), which is what one card charge is |
+| `payment_method` | `str` | optional, as printed |
+| `item_id` | `str` | optional. The retailer's own item number |
+| `retailer_category` | `str` | optional. The department, when the retailer prints one |
+| `currency_code`, `status` | `str` | optional |
+| `institution` | `str` | optional. Only when the row's store differs from the result's |
+
+There is no `account` or `accountType`: a retailer is not an account.
+`payment_method` is never masked or normalized. A phone's wallet gives the
+retailer its own number for a card, so the digits on a receipt need not be
+the card's. An item that was cancelled and never charged is left out.
+
+**A refund is its own row, never a change to the purchase.** What was
+bought stays as it was bought; the money back is a second row with
+`line_type` `"refund"`, a positive `amount`, the refund's own date and the
+`order_id` of the order it refunds. That shared `order_id` is what lets a
+user see an order beside what came back from it. A retailer often says
+only which order a refund is for, not which item: do not guess the item in
+the parser. OrbySystems works it out from the order's rows after the
+import, and shows the refund against the order when it cannot.
+
+See `scripts/csv_institutions/amazon_order_history.py` and
+`amazon_refund_details.py`, which read two files of one export.
+
 ## Checks: the statement's own arithmetic
 
 A statement prints figures about itself — a section's total, the opening

@@ -271,7 +271,7 @@ def _parse_matched(module, rows: list[dict[str, str]], csv_path: str) -> dict:
     validate contract is untouched by this normalization.
     """
     result = module.parse(rows, csv_path)
-    if parser_common.module_kind(module) == parser_common.KIND_BROKERAGE:
+    if parser_common.module_kind(module) in parser_common.MULTI_TABLE_KINDS:
         parser_common.validate_multi_table_parse_result(result, module.__name__)
         return result
     parser_common.validate_parse_result(result, module.__name__)

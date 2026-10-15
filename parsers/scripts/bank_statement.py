@@ -256,7 +256,7 @@ def _parse_matched(module, pages_text: list[str], pdf_path: str, vision: dict | 
     by this normalization.
     """
     kind = parser_common.module_kind(module)
-    if kind == parser_common.KIND_BROKERAGE:
+    if kind in parser_common.MULTI_TABLE_KINDS:
         result = module.parse(pages_text, pdf_path)
         parser_common.validate_multi_table_parse_result(result, module.__name__)
         return result

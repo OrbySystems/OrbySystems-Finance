@@ -125,6 +125,13 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # list - see module_kind's docstring. ---
 KIND_BANK = "bank"
 KIND_BROKERAGE = "brokerage"
+# A retailer's own record of what was bought - an order history export, a
+# receipt - one row per item, in the retail_items table (CONTRACT.md,
+# "parse() - KIND_RETAIL"). Same tables envelope as KIND_BROKERAGE.
+KIND_RETAIL = "retail"
+#: Kinds whose parse() returns the tables dict rather than a flat
+#: transactions list.
+MULTI_TABLE_KINDS = frozenset({KIND_BROKERAGE, KIND_RETAIL})
 
 # Support tier: how far a parser's format has been confirmed on real
 # statements. It decides what OrbySystems offers when a statement does not
@@ -747,6 +754,29 @@ _BROKERAGE_HOLDING_OPTIONAL_KEYS = {
 }
 _BROKERAGE_HOLDING_KEYS = _BROKERAGE_HOLDING_REQUIRED_KEYS | _BROKERAGE_HOLDING_OPTIONAL_KEYS
 
+# One item on a retailer's order or receipt. amount is what the line cost
+# in full (items, its tax, its share of shipping, less its discounts), in
+# the usual sign convention: negative is money spent, positive a refund.
+# There is no account or accountType: a retailer is not an account, and
+# payment_method is kept as printed (an Apple Pay receipt prints the
+# device's number, not the card's), never masked to digits or matched on.
+# charge_group names the rows the retailer charged together (a shipment, a
+# receipt) - what one card charge corresponds to.
+_RETAIL_ITEM_REQUIRED_KEYS = {"date", "description", "amount", "order_id", "line_type"}
+#: What a retail_items row is, said outright and never left to the sign of
+#: its amount: something bought, or money given back for it. A refund
+#: carries the order_id of what it refunds, which is how the two are shown
+#: together.
+RETAIL_LINE_PURCHASE = "purchase"
+RETAIL_LINE_REFUND = "refund"
+RETAIL_LINE_TYPES = frozenset({RETAIL_LINE_PURCHASE, RETAIL_LINE_REFUND})
+_RETAIL_ITEM_OPTIONAL_KEYS = {
+    "quantity", "unit_price", "tax", "shipping", "discount", "charge_group",
+    "payment_method", "item_id", "retailer_category", "currency_code",
+    "status", "institution",
+}
+_RETAIL_ITEM_KEYS = _RETAIL_ITEM_REQUIRED_KEYS | _RETAIL_ITEM_OPTIONAL_KEYS
+
 # Per-table (required keys, all allowed keys, numeric keys, nullable
 # numeric keys) - cash_transactions reuses the exact same schema
 # bank_statement.py's own KIND_BANK parsers use for a "transactions"
@@ -764,8 +794,15 @@ _TABLE_SCHEMAS = {
         {"quantity", "price", "current_value", "cost_basis_total", "average_cost_basis", "percent_of_account", "vested_quantity", "vested_value", "estimated_annual_income", "estimated_yield"},
         {"quantity", "price", "current_value", "cost_basis_total", "average_cost_basis", "percent_of_account", "vested_quantity", "vested_value", "estimated_annual_income", "estimated_yield"},
     ),
+    "retail_items": (
+        _RETAIL_ITEM_REQUIRED_KEYS, _RETAIL_ITEM_KEYS,
+        {"amount", "quantity", "unit_price", "tax", "shipping", "discount"},
+        {"quantity", "unit_price", "tax", "shipping", "discount"},
+    ),
 }
 _STRING_ROW_KEYS = {
+    "order_id", "charge_group", "payment_method", "item_id", "retailer_category",
+    "line_type",
     "action", "transaction_type", "subtype", "symbol", "description",
     "security_id", "security_id_type", "currency_code", "transaction_time",
     "status", "reference", "cancel_reference", "provider_account_id",
@@ -1239,6 +1276,20 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
             # by name, the same way an unknown key does.
             if table_name == "brokerage_transactions":
                 _check_transaction_rules(row, module_name, table_name, i)
+            if table_name == "retail_items":
+                line_type = row["line_type"]
+                if line_type not in RETAIL_LINE_TYPES:
+                    raise ValueError(
+                        f"{module_name}.parse(): tables[{table_name!r}][{i}]['line_type'] is {line_type!r}; "
+                        f"it must be one of {sorted(RETAIL_LINE_TYPES)}")
+                # A refund counted as spending, or a purchase as money back,
+                # is wrong by twice its amount in every total.
+                if line_type == RETAIL_LINE_REFUND and row["amount"] < 0:
+                    raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}] is a refund with a "
+                                     f"negative amount; money back is positive")
+                if line_type == RETAIL_LINE_PURCHASE and row["amount"] > 0:
+                    raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}] is a purchase with a "
+                                     f"positive amount; money spent is negative")
             ttype = row.get("transaction_type")
             if ttype and ttype not in TRANSACTION_TYPES:
                 raise ValueError(
