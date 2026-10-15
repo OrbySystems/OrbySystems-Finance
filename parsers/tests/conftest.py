@@ -56,6 +56,7 @@ class Statement:
     transactions: list = field(default_factory=list)          # cash_transactions
     brokerage_transactions: list = field(default_factory=list)
     brokerage_holdings: list = field(default_factory=list)
+    retail_items: list = field(default_factory=list)
 
     @classmethod
     def from_json(cls, obj: dict) -> "Statement":
@@ -68,6 +69,7 @@ class Statement:
             transactions=list(tables.get("cash_transactions") or []),
             brokerage_transactions=list(tables.get("brokerage_transactions") or []),
             brokerage_holdings=list(tables.get("brokerage_holdings") or []),
+            retail_items=list(tables.get("retail_items") or []),
         )
 
     @property
