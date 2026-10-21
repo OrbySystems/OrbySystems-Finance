@@ -361,7 +361,8 @@ consumers see one output shape regardless of which kind matched.
 A retailer's own record of what was bought (an order history export, a
 receipt), one row per item. The module sets `KIND =
 parser_common.KIND_RETAIL` and returns the same `tables` envelope a
-`KIND_BROKERAGE` module does, with the one table `retail_items`:
+`KIND_BROKERAGE` module does, with the table `retail_items` (and
+`retail_returns`, below):
 
 ```python
 KIND = parser_common.KIND_RETAIL
@@ -403,8 +404,28 @@ only which order a refund is for, not which item: do not guess the item in
 the parser. OrbySystems works it out from the order's rows after the
 import, and shows the refund against the order when it cannot.
 
-See `scripts/csv_institutions/amazon_order_history.py` and
-`amazon_refund_details.py`, which read two files of one export.
+**A return is a table of its own, `retail_returns`.** A return the
+customer started is no money; the money back, when it comes, is a refund
+row in `retail_items` with the same `order_id`. A return with no refund for
+its order yet is a refund still to come. A `KIND_RETAIL` module may return
+`retail_returns` beside or instead of `retail_items`, one row per return:
+
+| key | type | notes |
+|---|---|---|
+| `date` | `str` | `YYYY-MM-DD`, the day the return was started |
+| `order_id` | `str` | the order the return is for |
+| `return_id` | `str` | the retailer's return number; one row each |
+| `amount` | number or `null` | optional. What the return is for, positive. A guide only: it is not money |
+| `currency_code`, `reason` | `str` | optional, as printed |
+| `resolution` | `str` | optional. `"refund"` or `"exchange"`: what the customer asked for |
+| `state` | `str` | optional. `"open"` (nothing recorded yet), `"closed"` (the item came back) or `"expired"` (it never did) |
+| `returned_on` | `str` | optional. `YYYY-MM-DD`, the day it was sent back |
+| `charged_back` | `bool` | optional. Refunded before the item came back, then charged again because it never did |
+| `institution` | `str` | optional. Only when the row's store differs from the result's |
+
+See `scripts/csv_institutions/amazon_order_history.py`,
+`amazon_refund_details.py` and `amazon_returns_status.py`, which read three
+files of one export.
 
 ## Checks: the statement's own arithmetic
 

@@ -780,6 +780,23 @@ _RETAIL_ITEM_OPTIONAL_KEYS = {
 }
 _RETAIL_ITEM_KEYS = _RETAIL_ITEM_REQUIRED_KEYS | _RETAIL_ITEM_OPTIONAL_KEYS
 
+# A return the customer started with a retailer, one row per return (the
+# retailer's return number), in the retail_returns table. It is no money:
+# the money back, when it comes, is a refund row in retail_items with the
+# same order_id. A return without one yet is a refund still to come.
+# resolution is what the customer asked for (refund or exchange); state is
+# where the retailer's record of the return stands (open, closed, expired);
+# charged_back says the retailer refunded ahead of the item coming back and
+# then charged for it again because it never did.
+_RETAIL_RETURN_REQUIRED_KEYS = {"date", "order_id", "return_id"}
+RETAIL_RETURN_RESOLUTIONS = frozenset({"refund", "exchange", ""})
+RETAIL_RETURN_STATES = frozenset({"open", "closed", "expired", ""})
+_RETAIL_RETURN_OPTIONAL_KEYS = {
+    "amount", "currency_code", "reason", "resolution", "state", "returned_on",
+    "charged_back", "institution",
+}
+_RETAIL_RETURN_KEYS = _RETAIL_RETURN_REQUIRED_KEYS | _RETAIL_RETURN_OPTIONAL_KEYS
+
 # Per-table (required keys, all allowed keys, numeric keys, nullable
 # numeric keys) - cash_transactions reuses the exact same schema
 # bank_statement.py's own KIND_BANK parsers use for a "transactions"
@@ -802,10 +819,11 @@ _TABLE_SCHEMAS = {
         {"amount", "quantity", "unit_price", "tax", "shipping", "discount"},
         {"quantity", "unit_price", "tax", "shipping", "discount"},
     ),
+    "retail_returns": (_RETAIL_RETURN_REQUIRED_KEYS, _RETAIL_RETURN_KEYS, {"amount"}, {"amount"}),
 }
 _STRING_ROW_KEYS = {
     "order_id", "charge_group", "payment_method", "item_id", "retailer_category",
-    "line_type",
+    "line_type", "return_id", "reason", "resolution", "state", "returned_on",
     "action", "transaction_type", "subtype", "symbol", "description",
     "security_id", "security_id_type", "currency_code", "transaction_time",
     "status", "reference", "cancel_reference", "provider_account_id",
@@ -814,7 +832,7 @@ _STRING_ROW_KEYS = {
     "market_identifier_code", "sector", "industry", "tax_lots_json",
     "realized_gain_term", "related_security_id", "corporate_event",
 }
-_BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save"}
+_BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save", "charged_back"}
 
 
 # --- the classification vocabulary, loaded from transaction_vocabulary.json
@@ -1293,6 +1311,19 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
                 if line_type == RETAIL_LINE_PURCHASE and row["amount"] > 0:
                     raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}] is a purchase with a "
                                      f"positive amount; money spent is negative")
+            if table_name == "retail_returns":
+                for key in ("date", "returned_on"):
+                    if row.get(key) and not _DATE_RE.match(row[key]):
+                        raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}][{key!r}] must be YYYY-MM-DD")
+                if row.get("resolution", "") not in RETAIL_RETURN_RESOLUTIONS:
+                    raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}]['resolution'] is "
+                                     f"{row['resolution']!r}; it must be one of {sorted(RETAIL_RETURN_RESOLUTIONS - {''})}")
+                if row.get("state", "") not in RETAIL_RETURN_STATES:
+                    raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}]['state'] is "
+                                     f"{row['state']!r}; it must be one of {sorted(RETAIL_RETURN_STATES - {''})}")
+                if row.get("amount") is not None and row["amount"] < 0:
+                    raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}] is a return with a "
+                                     f"negative amount; a return's amount is what it is for, positive")
             ttype = row.get("transaction_type")
             if ttype and ttype not in TRANSACTION_TYPES:
                 raise ValueError(
