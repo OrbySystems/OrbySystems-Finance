@@ -76,3 +76,11 @@ def test_a_retail_row_says_whether_it_is_a_purchase_or_a_refund():
                       (_retail(amount=10.0), "money spent is negative")):
         with pytest.raises(ValueError, match=says):
             parser_common.validate_multi_table_parse_result(bad, "m")
+
+
+def test_subscribe_and_save_is_a_bool():
+    import pytest
+
+    parser_common.validate_multi_table_parse_result(_retail(subscribe_and_save=True), "m")
+    with pytest.raises(ValueError, match="must be a bool"):
+        parser_common.validate_multi_table_parse_result(_retail(subscribe_and_save="yes"), "m")

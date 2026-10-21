@@ -17,11 +17,17 @@ What the columns mean, checked against a real export by counting rows:
   * Amazon charges a card per shipment, and an order can ship in several.
     Order ID plus the ship date is the charge group.
   * A cancelled item has quantity 0 and cost nothing; it is left out.
+  * Shipping Option carries a code with "sns" as a word of its own on a
+    Subscribe & Save delivery (checked against a real export's
+    subscriptions), so that line is subscribe_and_save. The same item can
+    arrive by subscription and be ordered normally, so it is the line's.
 
 The digital orders, the refunds and the returns of the same export are
 other files with other columns, and are not read here. No check is
 reported: the file prints no total that the rows could be held against.
 """
+
+import re
 
 import parser_common
 
@@ -36,6 +42,9 @@ _REQUIRED_HEADER = {
 }
 
 _NOT_AVAILABLE = "not available"
+
+# A Subscribe & Save delivery's Shipping Option code.
+_SUBSCRIBE_AND_SAVE = re.compile(r"\bsns\b", re.IGNORECASE)
 
 
 def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
@@ -84,6 +93,7 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
             "unit_price": _number(row, "Unit Price"),
             "shipping": _number(row, "Shipping Charge"),
             "discount": _number(row, "Total Discounts"),
+            "subscribe_and_save": bool(_SUBSCRIBE_AND_SAVE.search(_text(row, "Shipping Option"))),
         }
         unit_tax = _number(row, "Unit Price Tax")
         item["tax"] = None if unit_tax is None else round(unit_tax * (quantity or 1), 2)

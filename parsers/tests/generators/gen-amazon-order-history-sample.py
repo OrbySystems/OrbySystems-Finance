@@ -61,7 +61,21 @@ ITEMS = [
     # No product name on record.
     ("B0EXAMPLE08", "USD", "2026-05-01T00:00:00Z", "111-0000006-0000006", "Closed", "1", "MasterCard - 0000",
      NA, "2026-05-02T00:00:00Z", "12.00", "1.08", "0", "13.08", "0", "12.00", "1.08", "Amazon.com"),
+    # Subscribe & Save deliveries (SUBSCRIBE_AND_SAVE_ORDERS), with its
+    # discount: the coffee bought normally in March, now by subscription.
+    ("B0EXAMPLE02", "USD", "2026-05-10T06:00:00Z", "111-0000007-0000007", "Closed", "1", VISA,
+     "Sample Brand Whole Bean Coffee, Medium Roast, 2 lb", "2026-05-11T06:00:00Z", "19.49", "1.67", "0",
+     "20.19", "-0.97", "19.49", "1.67", "Amazon.com"),
+    ("B0EXAMPLE09", "USD", "2026-06-10T06:00:00Z", "111-0000008-0000008", "Closed", "1", VISA,
+     "Sample Brand Paper Towels, 12 Rolls", "2026-06-11T06:00:00Z", "24.99", "2.25", "0",
+     "25.99", "-1.25", "24.99", "2.25", "Amazon.com"),
 ]
+
+# Orders delivered by Subscribe & Save, and the invented Shipping Option code
+# they carry; every other order ships "standard". A real export's code is
+# Amazon's own; what matters is "sns" as a word of its own.
+SUBSCRIBE_AND_SAVE_ORDERS = {"111-0000007-0000007", "111-0000008-0000008"}
+SUBSCRIBE_AND_SAVE_OPTION = "sns-standard-us"
 
 
 def build() -> list[list[str]]:
@@ -72,7 +86,8 @@ def build() -> list[list[str]]:
         rows.append([
             asin, ADDRESS, "SAMPLE(TBA000000000000)" if shipped else NA, currency, NA, NA, NA, NA,
             order_date, order_id, status, quantity, payment, "New", product, NA, ship_date, subtotal,
-            subtotal_tax, "Shipped" if shipped else NA, ADDRESS, shipping, "standard", total, discounts,
+            subtotal_tax, "Shipped" if shipped else NA, ADDRESS, shipping,
+            SUBSCRIBE_AND_SAVE_OPTION if order_id in SUBSCRIBE_AND_SAVE_ORDERS else "standard", total, discounts,
             unit_price, unit_tax, website,
         ])
     return rows

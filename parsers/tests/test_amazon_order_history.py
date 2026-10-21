@@ -15,7 +15,7 @@ def _items(run_statement):
 
 def test_one_row_per_item_and_cancelled_items_left_out(run_statement):
     items = _items(run_statement)
-    assert len(items) == 8
+    assert len(items) == 10
     assert all(i["order_id"] != "111-0000004-0000004" for i in items)
     assert all(i.get("status") != "Cancelled" for i in items)
     assert all(i["line_type"] == "purchase" and i["amount"] <= 0 for i in items)
@@ -65,3 +65,15 @@ def test_an_item_with_no_name_is_still_a_row(run_statement):
     unnamed = _items(run_statement)[7]
     assert unnamed["description"] == "Amazon item B0EXAMPLE08"
     assert unnamed["payment_method"] == "MasterCard - 0000"
+
+
+def test_a_subscribe_and_save_delivery_is_marked_by_line(run_statement):
+    items = _items(run_statement)
+    subscribed = [i for i in items if i["subscribe_and_save"]]
+    assert [i["order_id"] for i in subscribed] == ["111-0000007-0000007", "111-0000008-0000008"]
+    assert all(i["subscribe_and_save"] is False for i in items if i not in subscribed)
+    # The same coffee, bought normally in March and by subscription in May:
+    # the mark is the line's, not the item's.
+    coffee = [i for i in items if i["item_id"] == "B0EXAMPLE02"]
+    assert [(i["date"], i["subscribe_and_save"]) for i in coffee] == [("2026-03-02", False), ("2026-05-10", True)]
+    assert approx(coffee[1]["discount"], -0.97) and approx(coffee[1]["amount"], -20.19)
