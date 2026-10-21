@@ -1,6 +1,7 @@
 """Helpers shared across institution-specific statement parsers."""
 
 import re
+from datetime import date
 
 
 def parse_amount(raw: str) -> float:
@@ -15,6 +16,58 @@ def last4_digits(s: str) -> str:
     """
     digits = re.sub(r"\D", "", s)
     return digits[-4:]
+
+
+# German statements write 1.234,56: a dot between thousands, a comma before
+# the cents. The sign comes before the figure ("-2.417,36") or after it, with
+# or without a space ("318,26-", "1.083,52 -", "5,18+"). GERMAN_AMOUNT is the
+# pattern for a parser's own regexes, the sign included; parse_german_amount
+# reads what it matched.
+GERMAN_AMOUNT = r"[+-]?\s?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}(?:\s?[+-])?"
+_GERMAN_AMOUNT_RE = re.compile(r"^([+-])?\s?((?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})(?:\s?([+-]))?$")
+
+
+def parse_german_amount(raw: str) -> float:
+    """Parse a German amount - '1.234,56', '-2.417,36', '318,26-',
+    '1.083,52 -', '5,18+' - into a float. Raises ValueError on anything
+    else, a US-style '1,234.56' included, and on a figure signed at both
+    ends."""
+    m = _GERMAN_AMOUNT_RE.match(raw.strip())
+    if not m or (m.group(1) and m.group(3)):
+        raise ValueError(f"not a German amount: {raw!r}")
+    value = float(m.group(2).replace(".", "").replace(",", "."))
+    return -value if "-" in (m.group(1), m.group(3)) else value
+
+
+# DD.MM.YYYY, DD.MM.YY, or DD.MM. / DD.MM with the year left to the statement.
+_GERMAN_DATE_RE = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}|\d{2})?)?$")
+
+
+def parse_german_date(raw: str, statement_date: str = "") -> str:
+    """Parse a German date into YYYY-MM-DD: '30.09.2025', '30.09.25', or
+    '30.09.' with no year, which takes the year of statement_date
+    (YYYY-MM-DD) that puts it nearest that date - so '30.12.' on a statement
+    of 15 January 2026 is 2025-12-30, and '02.01.' on one of 31 December
+    2025 is 2026-01-02. Raises ValueError on a date that doesn't exist, and
+    on a date with no year when statement_date isn't given."""
+    m = _GERMAN_DATE_RE.match(raw.strip())
+    if not m:
+        raise ValueError(f"not a German date: {raw!r}")
+    day, month, year = int(m.group(1)), int(m.group(2)), m.group(3)
+    if year:
+        return date(int(year) + (2000 if len(year) == 2 else 0), month, day).isoformat()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", statement_date or ""):
+        raise ValueError(f"{raw!r} has no year, and no statement date to take one from")
+    near = date.fromisoformat(statement_date)
+    candidates = []
+    for y in (near.year - 1, near.year, near.year + 1):
+        try:
+            candidates.append(date(y, month, day))
+        except ValueError:
+            pass  # 29.02. in a year without one
+    if not candidates:
+        raise ValueError(f"not a date: {raw!r}")
+    return min(candidates, key=lambda d: abs((d - near).days)).isoformat()
 
 
 # Ordered patterns mapping an account title, product name or registration

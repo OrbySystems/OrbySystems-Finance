@@ -114,12 +114,50 @@ _REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks"}
 # optional - the fullest account identifier the source disclosed, for
 # telling accounts apart when the trailing digits in "account" are not
 # enough (several accounts at one institution can share them, and a
-# redacted statement may leave none at all). Matches Transaction's json
+# redacted statement may leave none at all); currency_code is optional -
+# the ISO 4217 code of the account's currency ("EUR"), left out for US
+# dollars, which is what a row without one is. Matches Transaction's json
 # tags on the Go side (see statement.go).
+#
+# A parser may emit currency_code only for apps of the first release whose
+# parser_common accepts it (the release after v1.0.2): an older app rejects
+# the key and with it the whole statement. See orby-core's
+# docs/currency-on-cash-rows.md.
 _REQUIRED_TXN_KEYS = {"date", "description", "amount", "balance", "account", "accountType"}
-_OPTIONAL_TXN_KEYS = {"reference", "institution", "provider_account_id"}
+_OPTIONAL_TXN_KEYS = {"reference", "institution", "provider_account_id", "currency_code"}
 _TXN_KEYS = _REQUIRED_TXN_KEYS | _OPTIONAL_TXN_KEYS
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Three letters, in any case: normalize_currency_codes upper-cases it.
+_CURRENCY_RE = re.compile(r"^[A-Za-z]{3}$")
+
+
+def _check_currency_code(row: dict, where: str) -> None:
+    """A cash row's currency_code is a str of three letters, or "" (the same
+    as leaving it out). Anything else - "Euro", "€" - fails by name rather
+    than being stored as a currency nothing can format."""
+    if "currency_code" not in row:
+        return
+    code = row["currency_code"]
+    if not isinstance(code, str):
+        raise ValueError(f"{where}['currency_code'] must be a str")
+    if code.strip() and not _CURRENCY_RE.match(code.strip()):
+        raise ValueError(f"{where}['currency_code'] is {code!r}; it must be an ISO 4217 code such as 'EUR' "
+                         f"(or left out for US dollars)")
+
+
+def normalize_currency_codes(result: dict) -> dict:
+    """Upper-cases each cash_transactions row's currency_code and drops an
+    empty one, so a row says "EUR" or nothing (US dollars). Run by both
+    dispatchers on the tables envelope after validation."""
+    for row in (result.get("tables") or {}).get("cash_transactions") or []:
+        if "currency_code" not in row:
+            continue
+        code = row["currency_code"].strip().upper()
+        if code:
+            row["currency_code"] = code
+        else:
+            del row["currency_code"]
+    return result
 
 # --- kind tagging, shared by bank_statement.py's combined institutions/
 # list - see module_kind's docstring. ---
@@ -1125,6 +1163,7 @@ def validate_parse_result(result: dict, module_name: str) -> None:
         for key in ("reference", "institution", "account", "accountType"):
             if key in t and not isinstance(t[key], str):
                 raise ValueError(f"{module_name}.parse(): transactions[{i}][{key!r}] must be a str")
+        _check_currency_code(t, f"{module_name}.parse(): transactions[{i}]")
     if "checks" in result:
         statement_checks.validate_checks(result["checks"], {"cash_transactions": txns}, module_name)
 
@@ -1297,6 +1336,8 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
             # by name, the same way an unknown key does.
             if table_name == "brokerage_transactions":
                 _check_transaction_rules(row, module_name, table_name, i)
+            if table_name == "cash_transactions":
+                _check_currency_code(row, f"{module_name}.parse(): tables[{table_name!r}][{i}]")
             if table_name == "retail_items":
                 line_type = row["line_type"]
                 if line_type not in RETAIL_LINE_TYPES:

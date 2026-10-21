@@ -111,6 +111,23 @@ Each `transactions[]` entry — **exactly**:
 | `reference` | `str` | optional — the issuer's own reference number |
 | `institution` | `str` | optional — only if it differs from the statement's primary |
 | `provider_account_id` | `str` | optional — fullest account identifier disclosed |
+| `currency_code` | `str` | optional — ISO 4217 code of the account's currency (`"EUR"`); leave it out for US dollars |
+
+**Currency.** Amounts are in the account's own currency, never converted.
+A row without `currency_code` is in US dollars, so a US parser leaves it
+out. A parser for an account in another currency sets it on every row: the
+dispatcher accepts three letters in any case and prints them upper-cased
+(`parser_common.normalize_currency_codes`); anything else ("Euro", "€")
+fails validation. The same key, with the same rule, is allowed on a
+`KIND_BROKERAGE` parser's `cash_transactions` rows. OrbySystems keeps each
+currency apart: a project reports in one currency and never adds another
+into it (orby-core `docs/currency-on-cash-rows.md`).
+
+**Emit it only for apps that accept it.** An app validates parser output
+against its own copy of this contract and rejects an unknown key, which
+fails the whole statement. `currency_code` is accepted from the first
+release after v1.0.2; a parser delivered to, or dropped in by, a user on
+an older release must leave it out.
 
 `vision`, when not `None`, is `{"endpoint", "model", "api_key"}` for an
 OpenAI-compatible vision-capable chat endpoint (`check_ocr.py` uses it to
