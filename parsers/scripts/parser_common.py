@@ -811,10 +811,12 @@ RETAIL_LINE_TYPES = frozenset({RETAIL_LINE_PURCHASE, RETAIL_LINE_REFUND})
 #: subscribe_and_save says a purchase line was delivered by the retailer's
 #: repeat-delivery program (Amazon's Subscribe & Save); it belongs to the
 #: line, not the item, since one item can arrive both ways.
+#: digital says the line is a digital item (an ebook, an audiobook, a video,
+#: an app) or a refund of one: nothing was shipped.
 _RETAIL_ITEM_OPTIONAL_KEYS = {
     "quantity", "unit_price", "tax", "shipping", "discount", "charge_group",
     "payment_method", "item_id", "retailer_category", "currency_code",
-    "status", "institution", "subscribe_and_save",
+    "status", "institution", "subscribe_and_save", "digital",
 }
 _RETAIL_ITEM_KEYS = _RETAIL_ITEM_REQUIRED_KEYS | _RETAIL_ITEM_OPTIONAL_KEYS
 
@@ -870,7 +872,7 @@ _STRING_ROW_KEYS = {
     "market_identifier_code", "sector", "industry", "tax_lots_json",
     "realized_gain_term", "related_security_id", "corporate_event",
 }
-_BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save", "charged_back"}
+_BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save", "charged_back", "digital"}
 
 
 # --- the classification vocabulary, loaded from transaction_vocabulary.json

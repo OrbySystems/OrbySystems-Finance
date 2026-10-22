@@ -406,6 +406,7 @@ Result — **exactly** `institution` (the retailer), `statementDate`
 | `currency_code`, `status` | `str` | optional |
 | `institution` | `str` | optional. Only when the row's store differs from the result's |
 | `subscribe_and_save` | `bool` | optional. The line came by the retailer's repeat-delivery program (Amazon's Subscribe & Save). It is the line's, not the item's: the same item can arrive by subscription and be ordered normally |
+| `digital` | `bool` | optional. The line is a digital item (an ebook, an audiobook, a video, an app), or a refund of one: nothing was shipped |
 
 There is no `account` or `accountType`: a retailer is not an account.
 `payment_method` is never masked or normalized. A phone's wallet gives the
