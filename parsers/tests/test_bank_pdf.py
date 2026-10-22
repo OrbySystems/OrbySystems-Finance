@@ -239,22 +239,6 @@ def test_bofa_combined_statement_2012(run_statement):
     assert hoa and approx(hoa[0]["amount"], -506.95)
 
 
-def test_bofa_checking_combined_2018(run_statement):
-    stmt = run_statement("bofa-sample-statement-2018.pdf")
-    assert stmt.institution == "Bank of America"
-    assert stmt.statement_date == "2019-02-05"
-    assert len(stmt.transactions) == 2
-
-    checking = next(t for t in stmt.transactions if t["accountType"] == "Checking")
-    savings = next(t for t in stmt.transactions if t["accountType"] == "Savings")
-    assert checking["account"] == "6666"
-    assert approx(checking["amount"], 0.23)
-    assert approx(checking["balance"], 14883.39)
-    assert savings["account"] == "7777"
-    assert approx(savings["amount"], 0.65)
-    assert approx(savings["balance"], 84749.75)
-
-
 def test_bofa_combined_2012_synthetic(run_statement):
     stmt = run_statement("bofa-combined-2012-synthetic-sample.pdf")
     assert stmt.institution == "Bank of America"
@@ -293,14 +277,6 @@ def test_bofa_savings_legacy_single_account_synthetic(run_statement):
     stmt = run_statement("bofa-savings-legacy-single-account-synthetic-sample.pdf")
     assert stmt.institution == "Bank of America"
     assert stmt.statement_date == "2013-03-31"
-    assert len(stmt.transactions) == 0
-
-
-def test_bofa_savings_legacy_single_account_zero_activity_real(run_statement):
-    # Redacted real statement, gitignored -> skips where absent.
-    stmt = run_statement("bofa-savings-2012.pdf")
-    assert stmt.institution == "Bank of America"
-    assert stmt.statement_date == "2012-12-24"
     assert len(stmt.transactions) == 0
 
 

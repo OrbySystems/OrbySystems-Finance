@@ -45,7 +45,10 @@ import parser_common  # noqa: E402
 # COMMITTED synthetic fixtures alone - otherwise this fails on a fresh clone
 # and passes only on the machine that has the private ones, which is the
 # failure mode this number exists to prevent.
-_MIN_ROWS = 40
+# The investment parsers are not in this repo's tree on its own (OrbySystems lays
+# its private ones over it), and they are where most brokerage rows come from.
+_WITH_INVESTMENT_PARSERS = (SCRIPTS / "institutions" / "fidelity_brokerage.py").exists()
+_MIN_ROWS = 40 if _WITH_INVESTMENT_PARSERS else 5
 
 
 #: Warnings the fixtures' parsers drew in backwards-compatible mode (the

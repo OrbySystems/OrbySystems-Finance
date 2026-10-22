@@ -34,7 +34,8 @@ def bundled_parsers() -> list[Path]:
 
 def test_every_bundled_parser_declares_its_tier_on_a_line_of_its_own() -> None:
     parsers = bundled_parsers()
-    assert len(parsers) > 30
+    # More once a private set of parsers is laid over this tree.
+    assert len(parsers) > 15
     for path in parsers:
         found = TIER_LINE.findall(path.read_text())
         assert len(found) == 1, f"{path.name}: declare SUPPORT_TIER = parser_common.SUPPORT_TIER_<TIER> once"

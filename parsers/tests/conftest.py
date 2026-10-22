@@ -99,7 +99,9 @@ _GENERATE_ON_DEMAND = {
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_generated_fixtures():
     for target, gen in _GENERATE_ON_DEMAND.items():
-        if not (FIXTURES / target).exists():
+        # A generator that isn't here belongs to a parser set that isn't
+        # laid over this tree (OrbySystems' private investment parsers).
+        if not (FIXTURES / target).exists() and (GENERATORS / gen).exists():
             subprocess.run([sys.executable, str(GENERATORS / gen)], check=True)
     yield
 
