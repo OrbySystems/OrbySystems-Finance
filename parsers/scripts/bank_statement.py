@@ -227,7 +227,7 @@ def _dump_text(pdf_path: str) -> None:
     """
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            pages = [p.extract_text() or "" for p in pdf.pages]
+            pages = [parser_common.page_text(p) for p in pdf.pages]
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"error": f"failed to read PDF: {e}"}))
         sys.exit(1)
@@ -338,7 +338,7 @@ def main() -> None:
         with pdfplumber.open(pdf_path) as pdf:
             # Check only the first few pages before doing any real work:
             # fail early if this isn't a supported statement format.
-            head_text = [p.extract_text() or "" for p in pdf.pages[:_DETECT_PAGE_COUNT]]
+            head_text = [parser_common.page_text(p) for p in pdf.pages[:_DETECT_PAGE_COUNT]]
             joined_head_text = "\n".join(head_text)
             input_stats = {
                 "pageCount": len(pdf.pages),
@@ -365,7 +365,7 @@ def main() -> None:
                 print(json.dumps(out))
                 return
 
-            tail_text = [p.extract_text() or "" for p in pdf.pages[_DETECT_PAGE_COUNT:]]
+            tail_text = [parser_common.page_text(p) for p in pdf.pages[_DETECT_PAGE_COUNT:]]
             input_stats["textPageCount"] += sum(1 for text in tail_text if text.strip())
             pages_text = [t for t in head_text + tail_text if t]
     except Exception as e:  # noqa: BLE001

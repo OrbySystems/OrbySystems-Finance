@@ -84,3 +84,30 @@ def test_subscribe_and_save_is_a_bool():
     parser_common.validate_multi_table_parse_result(_retail(subscribe_and_save=True), "m")
     with pytest.raises(ValueError, match="must be a bool"):
         parser_common.validate_multi_table_parse_result(_retail(subscribe_and_save="yes"), "m")
+
+
+class PageTextTest(unittest.TestCase):
+    def test_words_set_in_small_type_stay_apart(self):
+        # "Statement" and "Period" 2pt apart: under pdfplumber's flat 3pt,
+        # so extract_text() glues them; page_text() reads a space. Run in a
+        # subprocess: test_bofa_checking_unit.py stubs pdfplumber in this one.
+        import subprocess
+        import tempfile
+
+        script = (
+            "import sys, pdfplumber, parser_common\n"
+            "from reportlab.pdfgen import canvas\n"
+            "c = canvas.Canvas(sys.argv[1]); c.setFont('Helvetica', 8)\n"
+            "c.drawString(72, 700, 'Statement')\n"
+            "c.drawString(72 + c.stringWidth('Statement', 'Helvetica', 8) + 2, 700, 'Period')\n"
+            "c.drawString(72, 680, 'Kerning'); c.save()\n"
+            "with pdfplumber.open(sys.argv[1]) as pdf:\n"
+            "    page = pdf.pages[0]\n"
+            "    print(page.extract_text().split('\\n')[0])\n"
+            "    print(parser_common.page_text(page).replace('\\n', '|'))\n"
+        )
+        scripts = os.path.join(os.path.dirname(__file__), "..", "scripts")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = subprocess.run([sys.executable, "-c", script, os.path.join(tmp, "small.pdf")],
+                                 cwd=scripts, capture_output=True, text=True, check=True).stdout
+        self.assertEqual(out.split("\n")[:2], ["StatementPeriod", "Statement Period|Kerning"])

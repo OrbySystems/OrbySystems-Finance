@@ -42,6 +42,19 @@ import traceback
 
 import statement_checks
 
+# How far apart two letters must be, in font sizes, for the text to have a
+# space between them. A space is about 0.28 em in a text font; kerning and
+# rounding stay under 0.1. pdfplumber's default (a flat 3pt) glues words set
+# in small type ("StatementPeriod"). ingest/py/scramble_statement.py keeps its
+# own copy of this number (it ships alone), and a test holds the two equal.
+SPACE_GAP_EM = 0.18
+
+
+def page_text(page) -> str:
+    """The text of one pdfplumber page as every parser reads it: words
+    apart by SPACE_GAP_EM of the font size are separate words."""
+    return page.extract_text(x_tolerance_ratio=SPACE_GAP_EM) or ""
+
 # --- spreadsheet header/footer detection, shared by csv_statement.py's
 # CSV *and* .xlsx paths. A real export often brackets its table with a
 # preamble ("Custom report created on: ...") and/or a trailing
