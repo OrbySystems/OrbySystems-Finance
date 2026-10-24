@@ -1,0 +1,7 @@
+Account,Flag,Date,Payee,Category Group/Category,Category Group,Category,Memo,Outflow,Inflow,Cleared
+Harbor Checking,,01/02/2021,Starting Balance,Inflow: Ready to Assign,Inflow,Ready to Assign,,$0.00,"$1,500.00",Cleared
+Harbor Checking,,01/03/2021,Lakeshore Grocer,Everyday: Groceries,Everyday,Groceries,,$84.23,$0.00,Cleared
+Harbor Checking,,01/15/2021,Acme Widgets,Inflow: Ready to Assign,Inflow,Ready to Assign,Pay,$0.00,"$3,200.00",Cleared
+Meridian Card,,01/20/2021,Corner Coffee,Everyday: Dining,Everyday,Dining,,$5.75,$0.00,Uncleared
+Meridian Card,,01/25/2021,Transfer : Harbor Checking,,,,,$0.00,$5.75,Cleared
+Retirement 401k,,01/31/2021,Reconciliation Balance Adjustment,,,,,$0.00,"$2,000.00",Reconciled

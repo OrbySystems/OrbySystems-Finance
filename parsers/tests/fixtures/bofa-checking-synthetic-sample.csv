@@ -1,0 +1,11 @@
+Description,,Summary Amt.
+Beginning balance as of 05/01/2024,,"1,000.00"
+Total credits,,"3,200.00"
+Total debits,,"-1,911.30"
+Ending balance as of 05/31/2024,,"2,288.70"
+
+Date,Description,Amount,Running Bal.
+05/01/2024,Beginning balance as of 05/01/2024,,"1,000.00"
+05/02/2024,ACME WIDGETS DES:PAYROLL,"3,200.00","4,200.00"
+05/03/2024,LAKESHORE GROCER,-61.30,"4,138.70"
+05/15/2024,RENT PAYMENT,"-1,850.00","2,288.70"

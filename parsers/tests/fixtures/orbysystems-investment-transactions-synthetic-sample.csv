@@ -1,0 +1,6 @@
+date,description,transaction_type,amount,symbol,quantity,price,fees,account_type,institution,account_last4
+2020-01-02,Bought 10 VTI,buy,-1600.00,VTI,10,160.00,0,Roth IRA,Vantage Brokerage,3301
+2020-01-02,Contribution,contribution,6000.00,,,,,Roth IRA,Vantage Brokerage,3301
+2020-03-31,VTI dividend,dividend,12.30,VTI,,,,Roth IRA,Vantage Brokerage,3301
+2020-04-01,Shares moved in,transfer_in,0,BND,5,,,Roth IRA,Vantage Brokerage,3301
+2020-06-01,Sold 4 VTI,sell,700.00,VTI,4,175.00,0,Roth IRA,Vantage Brokerage,3301

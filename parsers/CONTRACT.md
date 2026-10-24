@@ -112,6 +112,7 @@ Each `transactions[]` entry — **exactly**:
 | `institution` | `str` | optional — only if it differs from the statement's primary |
 | `provider_account_id` | `str` | optional — fullest account identifier disclosed |
 | `currency_code` | `str` | optional — ISO 4217 code of the account's currency (`"EUR"`); leave it out for US dollars |
+| `account_name` | `str` | optional — the account's own name in a file that gives no number for it (an app's export: `"Chase Freedom"`); see "Records" |
 
 **Currency.** Amounts are in the account's own currency, never converted.
 A row without `currency_code` is in US dollars, so a US parser leaves it
@@ -158,7 +159,7 @@ below). `tables` keys must be a subset of:
   `realized_gain`, `realized_gain_term`, `related_security_id`,
   `currency_code`, `transaction_time`, `status`, `reference`,
   `cancel_reference`, `provider_account_id`, `institution`,
-  `amount_missing`. `amount_missing` (`bool`) marks a row whose statement
+  `account_name`, `amount_missing`. `amount_missing` (`bool`) marks a row whose statement
   printed no cash value — a dash rather than `0.00`: set `amount` to `0.0`
   and `amount_missing` to `true`, and OrbySystems flags the row for the
   user to value.
@@ -170,7 +171,7 @@ below). `tables` keys must be a subset of:
   `sedol`, `figi`, `currency_code`, `price_as_of`, `price_time`,
   `vested_quantity`, `vested_value`, `position_type`,
   `market_identifier_code`, `sector`, `industry`, `is_cash_equivalent`,
-  `tax_lots_json`, `provider_account_id`, `institution`.
+  `tax_lots_json`, `provider_account_id`, `institution`, `account_name`.
 
 Any of the three tables may be omitted or empty.
 
@@ -444,6 +445,54 @@ its order yet is a refund still to come. A `KIND_RETAIL` module may return
 See `scripts/csv_institutions/amazon_order_history.py`,
 `amazon_refund_details.py` and `amazon_returns_status.py`, which read three
 files of one export.
+
+## Records: `RECORDS = True`
+
+A parser that reads somebody's records - a money app's export (Mint, YNAB,
+Tiller), or a file in OrbySystems' import CSV (IMPORT-CSV.md) - rather than an
+institution's statement sets `RECORDS = True` at module scope. The dispatcher
+reports it as `"records": true` in the matched parser, and OrbySystems counts
+the file for less than the account's statements and its institution's own
+exports: where either covers the same days, theirs are the rows that count
+("Where files overlap", below). A records row it keeps takes their spelling of
+its institution, so it joins that account.
+
+A records file often names its accounts but gives no number or bank for them.
+Leave `account` (and `institution`) empty and set `account_name` to the
+account's name in the file: OrbySystems asks the user which account each name
+is - one already on file, at any institution, or a new one by its bank and
+last four digits - and files the rows under it. A parser never invents a
+number.
+
+`account_name` is accepted from the first release after v1.0.3: an older
+app rejects the key and with it the whole file, so a parser delivered to one
+leaves it out. An older app ignores `RECORDS`, and keeps every row.
+
+## Where files overlap
+
+An account's rows can come from its statements (a PDF), from its
+institution's own export (a CSV or `.xlsx` a `csv_institutions/` parser
+reads), and from somebody's records. Each words a row its own way ("WHOLEFDS
+MKT #10234", "WHOLE FOODS MARKET", "Whole Foods"), so no dedup key catches
+the days two of them cover, and those days would count twice. OrbySystems
+keeps one: a statement's rows over an export's, and either over records.
+
+- A file covers an account from the date of its first row of activity to its
+  last, as it was read; a statement's holdings date (its closing date)
+  extends that, an export's only when it closely follows, and holdings alone
+  cover no activity. Statements of one account that nearly meet (one a
+  month) cover the days between them; a month with no statement is not
+  covered, so an export or records fill it.
+- A holding is covered only by a better file's holdings of the account on the
+  same date.
+- The rows a better file covers are left out whichever is imported first: a
+  statement imported after an export takes the export's rows for its days
+  out. The import says, per account, what it left out or took out.
+- A row a lesser file has word for word stays the better file's.
+
+A parser has nothing to do for this beyond naming its institution as that
+institution's other parsers do (a bank's CSV parser as its PDF parser does),
+and setting `RECORDS` when it reads records.
 
 ## Checks: the statement's own arithmetic
 

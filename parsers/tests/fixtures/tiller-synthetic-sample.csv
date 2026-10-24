@@ -1,0 +1,5 @@
+Date,Description,Category,Amount,Account,Account #,Institution,Month,Week,Transaction ID,Account ID,Check Number,Full Description,Date Added
+2/17/2023,Northside Fuel,Gas,-$38.12,Meridian Visa,xxxx9921,Meridian Card,2/1/2023,2/12/2023,t1,a1,,NORTHSIDE FUEL 5741,2/18/2023
+2/20/2023,Acme Widgets Payroll,Paycheck,"$3,200.00",Joint Checking,xxxx4417,Harbor Bank,2/1/2023,2/19/2023,t2,a2,,ACME WIDGETS PAYROLL,2/21/2023
+2/21/2023,Check,Rent,"-$1,850.00",Joint Checking,xxxx4417,Harbor Bank,2/1/2023,2/19/2023,t3,a2,1043,CHECK 1043,2/22/2023
+2/22/2023,Cash,Spending,-$20.00,Wallet,,,2/1/2023,2/19/2023,t4,a3,,CASH,2/22/2023

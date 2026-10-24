@@ -1,0 +1,70 @@
+{
+  "_doc": [
+    "OrbySystems' import CSV: the format a person converts their own records",
+    "to, so OrbySystems can read them into a spending or investment project.",
+    "One file per kind. A file is recognised by its header: the required",
+    "columns, any of the optional ones, and nothing else, named exactly as",
+    "here. IMPORT-CSV.md is the human-readable copy of this file; the",
+    "parsers orbysystems_transactions_csv.py and orbysystems_investments_csv.py",
+    "read it, and OrbySystems' Records Converter quotes it in the prompt it",
+    "writes. Comma-separated, UTF-8, one header row, one row per record."
+  ],
+  "version": 1,
+  "files": {
+    "transactions": {
+      "name": "orbysystems-transactions.csv",
+      "for": "spending",
+      "about": "Every transaction of bank, credit-card and similar accounts: what came in and what went out.",
+      "columns": [
+        {"name": "date", "required": true, "format": "date", "about": "The day of the transaction, as YYYY-MM-DD."},
+        {"name": "description", "required": true, "format": "text", "about": "The payee or memo, as the records have it. Never empty."},
+        {"name": "amount", "required": true, "format": "number", "about": "Negative when money left the account (the person is poorer), positive when it came in. On a credit card a purchase is negative and a payment to the card positive. Plain number: a dot for decimals, no currency symbol, no thousands separators."},
+        {"name": "account_type", "required": true, "format": "choice", "values": ["Checking", "Savings", "Money Market", "CD", "Credit Card", "Loan"], "about": "What kind of account the transaction belongs to."},
+        {"name": "institution", "required": true, "format": "text", "about": "The bank or card issuer that holds the account, e.g. Chase."},
+        {"name": "account_last4", "required": true, "format": "last4", "about": "The last four digits of the account's number. Any four digits the person chooses for an account with none."},
+        {"name": "account_name", "required": false, "format": "text", "about": "The person's own name for the account, e.g. Joint checking."},
+        {"name": "balance", "required": false, "format": "number", "about": "The account's balance after the transaction, or empty."},
+        {"name": "currency", "required": false, "format": "currency", "about": "The account's currency as a three-letter ISO code, e.g. EUR. Empty for US dollars."}
+      ]
+    },
+    "investment_transactions": {
+      "name": "orbysystems-investment-transactions.csv",
+      "for": "investment",
+      "about": "Every transaction of brokerage, retirement and similar investment accounts: trades, income, fees and money moving in or out.",
+      "columns": [
+        {"name": "date", "required": true, "format": "date", "about": "The trade or settlement day, as YYYY-MM-DD."},
+        {"name": "description", "required": true, "format": "text", "about": "What the records say happened, e.g. Bought 10 VTI. Never empty."},
+        {"name": "transaction_type", "required": true, "format": "choice", "values": ["buy", "sell", "dividend", "interest", "capital_gain", "fee", "tax", "deposit", "withdrawal", "contribution", "distribution", "transfer_in", "transfer_out", "internal_transfer", "rollover_in", "rollover_out", "other"], "about": "What kind of transaction it is. A reinvested dividend is two rows: the dividend, then a buy. internal_transfer is money or shares moving between two of the person's own accounts."},
+        {"name": "amount", "required": true, "format": "number", "about": "The cash the transaction moved in the account: negative when cash left it (a buy, a fee, a withdrawal), positive when cash came in (a sale, a dividend, a deposit). 0 when no cash moved, e.g. shares transferred in."},
+        {"name": "symbol", "required": false, "format": "text", "about": "The security's ticker, e.g. VTI. Empty for a row that is cash only."},
+        {"name": "quantity", "required": false, "format": "number", "about": "How many shares or units: never negative for a buy, a sale or income. For shares moving with no cash (transfer_in, transfer_out, internal_transfer), negative when they left the account."},
+        {"name": "price", "required": false, "format": "number", "about": "The price per share or unit."},
+        {"name": "fees", "required": false, "format": "number", "about": "Commissions and fees charged on the transaction, as a positive number."},
+        {"name": "account_type", "required": true, "format": "choice", "values": ["Brokerage", "Traditional IRA", "Roth IRA", "Rollover IRA", "SEP IRA", "SIMPLE IRA", "Inherited IRA", "401(k)", "Roth 401(k)", "403(b)", "457(b)", "HSA", "529", "Trust"], "about": "What kind of account the transaction belongs to."},
+        {"name": "institution", "required": true, "format": "text", "about": "The broker or plan provider that holds the account, e.g. Fidelity."},
+        {"name": "account_last4", "required": true, "format": "last4", "about": "The last four digits of the account's number. Any four digits the person chooses for an account with none."},
+        {"name": "account_name", "required": false, "format": "text", "about": "The person's own name for the account, e.g. Work 401(k)."},
+        {"name": "currency", "required": false, "format": "currency", "about": "The account's currency as a three-letter ISO code, e.g. EUR. Empty for US dollars."}
+      ]
+    },
+    "holdings": {
+      "name": "orbysystems-holdings.csv",
+      "for": "investment",
+      "about": "What investment accounts held, as of one day or several: one row per security per account per day.",
+      "columns": [
+        {"name": "as_of", "required": true, "format": "date", "about": "The day the holding is as of, as YYYY-MM-DD."},
+        {"name": "symbol", "required": true, "format": "text", "about": "The security's ticker, e.g. VTI. CASH for cash held in the account."},
+        {"name": "quantity", "required": true, "format": "number", "about": "How many shares or units were held; for CASH, the amount of cash."},
+        {"name": "description", "required": false, "format": "text", "about": "The security's name, e.g. Vanguard Total Stock Market ETF."},
+        {"name": "price", "required": false, "format": "number", "about": "The price per share or unit on that day."},
+        {"name": "market_value", "required": false, "format": "number", "about": "What the holding was worth on that day."},
+        {"name": "cost_basis", "required": false, "format": "number", "about": "What the holding cost in all."},
+        {"name": "account_type", "required": true, "format": "choice", "values": ["Brokerage", "Traditional IRA", "Roth IRA", "Rollover IRA", "SEP IRA", "SIMPLE IRA", "Inherited IRA", "401(k)", "Roth 401(k)", "403(b)", "457(b)", "HSA", "529", "Trust"], "about": "What kind of account holds it."},
+        {"name": "institution", "required": true, "format": "text", "about": "The broker or plan provider that holds the account, e.g. Fidelity."},
+        {"name": "account_last4", "required": true, "format": "last4", "about": "The last four digits of the account's number. Any four digits the person chooses for an account with none."},
+        {"name": "account_name", "required": false, "format": "text", "about": "The person's own name for the account, e.g. Work 401(k)."},
+        {"name": "currency", "required": false, "format": "currency", "about": "The account's currency as a three-letter ISO code, e.g. EUR. Empty for US dollars."}
+      ]
+    }
+  }
+}

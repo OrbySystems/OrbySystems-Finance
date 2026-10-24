@@ -129,7 +129,10 @@ _REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks"}
 # enough (several accounts at one institution can share them, and a
 # redacted statement may leave none at all); currency_code is optional -
 # the ISO 4217 code of the account's currency ("EUR"), left out for US
-# dollars, which is what a row without one is. Matches Transaction's json
+# dollars, which is what a row without one is; account_name is optional -
+# the account's own name in a file that gives no number for it (an app's
+# export: "Chase Freedom"), which OrbySystems asks the user to match to an
+# account. Matches Transaction's json
 # tags on the Go side (see statement.go).
 #
 # A parser may emit currency_code only for apps of the first release whose
@@ -137,7 +140,7 @@ _REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks"}
 # the key and with it the whole statement. See orby-core's
 # docs/currency-on-cash-rows.md.
 _REQUIRED_TXN_KEYS = {"date", "description", "amount", "balance", "account", "accountType"}
-_OPTIONAL_TXN_KEYS = {"reference", "institution", "provider_account_id", "currency_code"}
+_OPTIONAL_TXN_KEYS = {"reference", "institution", "provider_account_id", "currency_code", "account_name"}
 _TXN_KEYS = _REQUIRED_TXN_KEYS | _OPTIONAL_TXN_KEYS
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Three letters, in any case: normalize_currency_codes upper-cases it.
@@ -675,6 +678,15 @@ def unsupported_format_diagnostic(input_format: str, input_stats: dict, head_tex
     return diagnostic
 
 
+def module_records(module) -> bool:
+    """Whether the module reads someone's records rather than an
+    institution's statement: an app's export, or a file in OrbySystems'
+    import CSV. It says so with `RECORDS = True`. Where an account's
+    statements or its institution's exports cover the same days, theirs are
+    the rows OrbySystems keeps (CONTRACT.md, "Records")."""
+    return getattr(module, "RECORDS", False) is True
+
+
 def module_kind(module) -> str:
     """Returns module's KIND attribute (KIND_BANK or KIND_BROKERAGE), or
     KIND_BANK if it doesn't define one - the large majority of
@@ -770,7 +782,7 @@ _BROKERAGE_TXN_OPTIONAL_KEYS = {
     # says the row is a corporate action; this says which kind.
     "corporate_event",
     "amount_missing", "currency_code", "transaction_time", "status", "reference",
-    "cancel_reference", "provider_account_id", "institution",
+    "cancel_reference", "provider_account_id", "institution", "account_name",
     # What a sale actually realized, which the statement prints per row
     # and nothing else in this schema records - the input to any
     # tax-year gain/loss question. Signed: a gain is positive, a loss
@@ -801,7 +813,7 @@ _BROKERAGE_HOLDING_OPTIONAL_KEYS = {
     "figi", "currency_code", "price_as_of", "price_time", "vested_quantity",
     "vested_value", "position_type", "market_identifier_code", "sector",
     "industry", "is_cash_equivalent", "tax_lots_json", "provider_account_id",
-    "institution",
+    "institution", "account_name",
 }
 _BROKERAGE_HOLDING_KEYS = _BROKERAGE_HOLDING_REQUIRED_KEYS | _BROKERAGE_HOLDING_OPTIONAL_KEYS
 
@@ -883,7 +895,7 @@ _STRING_ROW_KEYS = {
     "institution", "account", "accountType", "type", "cusip", "isin",
     "sedol", "figi", "price_as_of", "price_time", "position_type",
     "market_identifier_code", "sector", "industry", "tax_lots_json",
-    "realized_gain_term", "related_security_id", "corporate_event",
+    "realized_gain_term", "related_security_id", "corporate_event", "account_name",
 }
 _BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save", "charged_back", "digital"}
 
@@ -1430,6 +1442,8 @@ def finish_parse(result: dict, module, adjust: dict | None = None) -> dict:
     not_applicable = module_not_applicable(module)
     if not_applicable:
         result["parser"]["notApplicable"] = not_applicable
+    if module_records(module):
+        result["parser"]["records"] = True
     return result
 
 

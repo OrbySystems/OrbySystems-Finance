@@ -1,0 +1,4 @@
+Account Number,Transaction Description,Transaction Date,Transaction Type,Transaction Amount,Balance
+36000004417,Deposit from ACME WIDGETS PAYROLL,06/03/24,Credit,3200.00,4115.80
+36000004417,Debit Card Purchase - LAKESHORE GROCER,06/04/24,Debit,61.30,4054.50
+36000004417,Withdrawal to 360 Performance Savings,06/10/24,Debit,500.00,3554.50

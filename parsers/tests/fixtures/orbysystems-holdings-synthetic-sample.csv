@@ -1,0 +1,4 @@
+as_of,symbol,quantity,description,price,market_value,cost_basis,account_type,institution,account_last4,account_name
+2024-12-31,VTI,120,Total Stock Market ETF,210.50,25260.00,18000.00,Brokerage,Vantage Brokerage,7788,Taxable
+2024-12-31,CASH,1500.25,,,,,Brokerage,Vantage Brokerage,7788,Taxable
+2025-06-30,VTI,125,Total Stock Market ETF,230.00,28750.00,19100.00,Brokerage,Vantage Brokerage,7788,Taxable

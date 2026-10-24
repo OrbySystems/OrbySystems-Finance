@@ -1,0 +1,5 @@
+date,description,amount,account_type,institution,account_last4,account_name,balance
+2019-01-05,Lakeshore Grocer,-84.20,Checking,Harbor Bank,4417,Joint checking,915.80
+2019-01-07,Northside Fuel,-45.00,Credit Card,Meridian Card,9921,,
+2019-01-15,Payroll Acme Widgets,3200.00,Checking,Harbor Bank,4417,Joint checking,4115.80
+2019-01-20,Card payment,45.00,Credit Card,Meridian Card,9921,,

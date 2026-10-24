@@ -12,11 +12,15 @@ scripts/
   bank_statement.py        PDF dispatcher (bank / credit-card / brokerage)
   csv_statement.py         CSV + .xlsx dispatcher
   parser_common.py         dispatch machinery + parse() IO-contract validation
+  import_csv.py            reading OrbySystems' import CSV (and checking a file in it)
+  import_csv_schema.json   the import CSV's columns, the one copy (IMPORT-CSV.md)
+  app_export.py            reading a money app's export (amounts, dates, account names)
   vision_client.py         OpenAI-compatible vision client (check-image OCR)
   institutions/            PDF parser modules + common.py + check_ocr.py
   csv_institutions/        CSV/.xlsx parser modules
 tests/                     standalone pytest suite + committed synthetic fixtures + generators
 CONTRACT.md                the detect() / parse() IO contract
+IMPORT-CSV.md              OrbySystems' import CSV: the format to convert your own records to
 CLAUDE.md                  how to add a parser
 ```
 
@@ -65,6 +69,53 @@ parser, Fidelity and Vanguard have broad coverage, Schwab and Merrill have
 partial plus provisional coverage, and the remaining families are provisional. Provisional
 parsers intentionally use narrow detection and should be hardened when the
 first real statement for each layout becomes available.
+
+## Card and bank CSV exports
+
+An institution's own CSV download, read as a statement is. All built from
+published descriptions of the layout and **untested** until a real export
+imports cleanly.
+
+| Export | Current scope |
+|---|---|
+| American Express (`amex_csv`) | The US card activity download with "additional transaction details": charges negated to negative, every card's rows filed under the card the payments arrive on (one billing account), the issuer's Reference kept. The plain three-column download, and another country's (Town/City, Postcode), are not claimed. Demo files: `amex-*synthetic-sample.csv` |
+| Capital One card (`capital_one_card_csv`) | Debit and Credit columns, Card No. as the account. Demo file: `capital-one-card-synthetic-sample.csv` |
+| Capital One 360 (`capital_one_360_csv`) | Checking and savings activity, signed by Transaction Type, with the running Balance; the account type is asked. Its header is remembered rather than confirmed. Demo file: `capital-one-360-synthetic-sample.csv` |
+| Discover card (`discover_card_csv`) | Purchases negated to negative; the file names no card, so the import asks. Demo file: `discover-card-synthetic-sample.csv` |
+| Chase card (`chase_card_csv`) | Signed already; the card's four digits from the download's name (`Chase1234_Activity…`), else asked. Chase checking is `chase_checking_csv` (verified). Demo file: `Chase9921_Activity…CSV` |
+| Citi card (`citi_card_csv`) | Debit a charge, Credit (written negative) a payment; pending rows left out; the card is asked. Demo file: `citi-card-synthetic-sample.csv` |
+| Bank of America checking and savings (`bofa_checking_csv`) | The summary block above the transactions read past, the beginning-balance row left out, the running balance kept; the account and its type asked. Demo file: `bofa-checking-synthetic-sample.csv` |
+| Bank of America card (`bofa_card_csv`) | The sign read from the rows (a payment says which way, `app_export.card_sign`); the card's digits from the download's name (`May2024_1234.csv`), else asked. Its header is remembered rather than confirmed. Demo file: `May2024_9921.csv` |
+| Wells Fargo (`wells_fargo_csv`) | The headerless five-column download, every row read; the account type from the download's name (`Checking1.csv`, `CreditCard1.csv`); a card's sign read from its rows; the account asked. Demo files: `Checking1.csv`, `CreditCard1.csv` |
+
+Each names its institution as that bank's PDF statement parser does, so a
+CSV and a statement of one account file under the same account, and where
+both cover the same days, the statement's rows count (CONTRACT.md, "Where
+files overlap").
+
+Fixtures: `tests/generators/gen-card-csv-samples.py` and `gen-bank-csv-samples.py`.
+
+## Your own records: the import CSV and money apps' exports
+
+These parsers read somebody's records rather than an institution's statement,
+and say so (`RECORDS = True`, CONTRACT.md "Records"): where an account's
+statements or its institution's exports cover the same days, theirs are the
+rows that count, and the records fill the rest.
+
+| Format | Status | Current scope |
+|---|---|---|
+| OrbySystems import CSV | **Verified** | The format in IMPORT-CSV.md: transactions (`orbysystems_transactions_csv`), and investment transactions or holdings (`orbysystems_investments_csv`), read exactly; a value out of form stops the read, naming its row and column. Demo files: `orbysystems-*-synthetic-sample.csv` |
+| Tiller | **Untested** | Transactions sheet: rows filed by `Account #` and `Institution`; one with neither is asked about by its account's name |
+| Mint | **Untested** | `transactions.csv` (unsigned amounts, debit/credit in Transaction Type) |
+| YNAB | **Untested** | Register export, current and YNAB 4 (Outflow/Inflow, the plan's date and number format); starting balances and tracking accounts' adjustments left out |
+| Monarch Money | **Untested** | Transactions export (signed amounts) |
+| Quicken Simplifi | **Untested** | Transactions export (Date, Account, Status, Payee, Category, Tags, Notes, Amount) |
+| Empower (Personal Capital) | **Untested** | Transactions export (Date, Account, Description, Category, Tags, Amount); investment accounts' rows are cash only |
+
+Mint, YNAB, Monarch, Simplifi and Empower name each account but give no
+number or bank for it: every row carries `account_name`, and OrbySystems asks
+which account each name is. Demo files: `*-synthetic-sample.csv` from
+`tests/generators/gen-records-samples.py`.
 
 ### Privacy-safe failure reports
 
