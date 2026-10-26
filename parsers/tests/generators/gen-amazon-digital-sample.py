@@ -69,6 +69,9 @@ ITEMS = [
     # A video rented, then returned (see RETURNS).
     ("ITEM7", "B0DIGI0007", "D01-0000007-0000007", "2026-05-20T20:00:00Z", "Mountain Weekend (HD Rental)",
      "www.amazon.com", "SUCCESS", NA, "5.99", [("Price Amount", "5.99", NA), ("Tax", "0.43", NA)]),
+    # A Prime membership renewal: a fee, not an item, left out.
+    ("ITEM8", "B0DIGI0008", "D01-0000008-0000008", "2026-06-01T08:00:00Z", "Amazon Prime Membership",
+     "www.amazon.com", "SUCCESS", NA, "139.0", [("Price Amount", "139.0", NA), ("Tax", "0.0", NA)]),
 ]
 
 # (item id, order id, return date, status, [(component, transaction amount)])

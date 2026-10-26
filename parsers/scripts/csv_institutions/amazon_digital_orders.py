@@ -20,8 +20,14 @@ What the file is like, checked against a real export by counting rows:
     not money spent, and are left out.
   * Every order number starts "D01-"; Audible's are marked by the
     Marketplace "www.audible.com", kept as the item's retailer category.
+  * A Prime membership fee can appear as a digital order. In a real export
+    checked by counting, one recent renewal was there and the years of
+    renewals before it were not, so the file can't show what membership
+    costs. It is a fee, not an item bought, and one fee of many would
+    mislead, so it is left out with the free items.
 """
 
+import re
 from collections import OrderedDict
 
 import parser_common
@@ -36,6 +42,9 @@ _REQUIRED_HEADER = {
 }
 
 _NOT_AVAILABLE = ("not available", "not applicable")
+
+# "Amazon Prime Membership", "Prime Student Membership", "Prime Membership Fee".
+_PRIME_MEMBERSHIP = re.compile(r"\bprime\b.*\bmembership\b", re.IGNORECASE)
 
 
 def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
@@ -71,6 +80,8 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
         first = group[0]
         if _text(first, "Order Status").upper() != "SUCCESS" or _text(first, "Paid by Other Customer").lower() == "yes":
             continue
+        if _PRIME_MEMBERSHIP.search(_text(first, "Product Name")):
+            continue  # a membership fee, not an item; most renewals aren't in the file
         day = _text(first, "Order Date")[:10]
         order_id = _text(first, "Order ID")
         if len(day) != 10 or not order_id:
