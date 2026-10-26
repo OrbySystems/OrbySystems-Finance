@@ -40,6 +40,12 @@ def test_free_unreleased_and_paid_by_someone_else_are_left_out(run_statement):
     assert not {"B0DIGI0004", "B0DIGI0005", "B0DIGI0006"} & set(items)
 
 
+def test_a_prime_membership_is_left_out(run_statement):
+    # Most renewals are not in the export, so the one fee in the file
+    # would stand for years of membership.
+    assert "B0DIGI0008" not in _orders(run_statement)
+
+
 def test_a_digital_return_is_money_back_for_its_order(run_statement):
     stmt = run_statement(RETURNS, "--expected-parser", "amazon_digital_returns.py")
     assert len(stmt.retail_items) == 1
