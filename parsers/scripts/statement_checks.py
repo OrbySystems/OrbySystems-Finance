@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import itertools
 import re
+import unicodedata
 
 KINDS = ("sum", "balance", "running", "unread")
 # Half a cent, per row: printed figures are rounded to the cent.
@@ -330,10 +331,20 @@ def apply_adjustments(tables: dict, checks: list[dict], adjust: dict) -> None:
 
 # --- what may leave the machine --------------------------------------------
 
+def _mask(ch: str) -> str:
+    category = unicodedata.category(ch)
+    if category[0] == "N":
+        return "9"
+    if category[0] in "LM":
+        return "A" if category in ("Lu", "Lt") else "a"
+    return ch
+
+
 def shape(text: str) -> str:
-    """A line with every letter and digit masked - its layout, not its words
-    or numbers: "01/15 COFFEE 4.50" -> "99/99 AAAAAA 9.99"."""
-    return re.sub(r"[a-z]", "a", re.sub(r"[A-Z]", "A", re.sub(r"\d", "9", text)))
+    """A line with every letter, mark and digit, of any script, masked -
+    its layout, not its words or numbers: "01/15 COFFEE 4.50" -> "99/99
+    AAAAAA 9.99", "José" -> "Aaaa", "①" -> "9"."""
+    return "".join(map(_mask, text))
 
 
 def diagnostic_summary(results: list[dict]) -> list[dict]:

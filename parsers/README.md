@@ -42,9 +42,11 @@ README_addparser.md has every parser's tier, generated from its Go catalog.
 | Charles Schwab | **Verified** | Retirement Plan Services quarterly 401(k) PDF validated against a production statement; retail brokerage PDF remains provisional |
 | Vanguard | **Provisional** | Voyager and Personal Investor brokerage PDFs plus Custom Activity CSV/XLSX |
 | Fidelity Rewards Visa (Elan Financial Services) | **Verified** | Monthly credit card statement, built from a scrambled real statement and confirmed by a clean import of a real one: account payments and fees, then each card's purchases, credits and fees, every card read as the one account; detail lines folded into the row above; statement checks for every section total, the Activity Summary's payments and credits and its purchases, fees and interest, Previous Balance + activity = New Balance, and lines not read. Demo statement: `fidelity-credit-card-synthetic-sample.pdf` |
-| Citi credit cards | **Verified** | Monthly card statements, rebuilt from a scrambled real statement and confirmed by a clean import of a real one: the layout of Citi's own cards (a "Trans. date / Post date" table, a year-to-date block) and the Costco Anywhere Visa's, with credit balances; statement checks for the Account Summary's payments and credits and its other figures, the printed fee and interest totals, Previous balance + activity = New balance, and lines not read. Also Citi annual account summaries. Other Citi card layouts are claimed by `citi_credit_card_family` (untested), so their failure offers the Statement Scrambler. Demo statement: `citi-card-synthetic-sample.pdf` |
+| Citi credit cards | **Verified** | Monthly card statements, rebuilt from a scrambled real statement and confirmed by a clean import of a real one: the layout of Citi's own cards (a "Trans. date / Post date" table, a year-to-date block) and the Costco Anywhere Visa's, with credit balances, including the November 2025 layout whose labels pdfminer measures at a quarter of a point (`parser_common.page_text` reads them at the size of the values on their line; real microprint, narrow for its size, is left as it is) and whose rows can run into the rewards column beside them; statement checks for the Account Summary's payments and credits and its other figures, the printed fee and interest totals, Previous balance + activity = New balance, and lines not read. Also Citi annual account summaries. Other Citi card layouts are claimed by `citi_credit_card_family` (untested), so their failure offers the Statement Scrambler. Demo statement: `citi-card-synthetic-sample.pdf` |
 | Apple Card (Goldman Sachs Bank USA) | **Verified** | Monthly credit card statement, built from a scrambled real statement and confirmed by a clean import of a real one: the Payments table, the Transactions table with its Daily Cash column (a percentage and an amount before each row's amount; Daily Cash is not a row), returns printed negative, and the Interest Charged table, its interest added as a row dated on the closing date only when no row of its own carries it and the Total Balance is short by exactly that amount. The statement prints no card number, so every row's account is blank and the app asks which account it is. Statement checks for each table's total, Previous Total Balance + activity = Total Balance, and lines not read. Demo statement: `apple-card-synthetic-sample.pdf` |
 | Sparkasse (any of the German Sparkassen) | **Provisional** | Girokonto Kontoauszug (PDF), built from a scrambled real statement: the bookings between the opening "Kontostand am …, Auszug Nr." line and the closing "Kontostand am … um … Uhr" line, carrying on across pages under the repeated page header, each booking's description lines folded into it; German amounts and dates (`common.parse_german_amount`, `parse_german_date`); the account's last four digits from the IBAN; a running balance derived from the opening Kontostand; `currency_code` from the column header ("Betrag EUR", else EUR), left out on an app that predates the key. The fee and interest attachments are not read: their totals are bookings already. Statement checks for opening Kontostand + bookings = closing Kontostand, and every dated line that looks like a booking but was not read. Demo statement: `sparkasse-checking-synthetic-sample.pdf` |
+| Star One Credit Union | **Provisional** | Member statement (PDF), built from a scrambled real statement: every savings and checking account under its "ACCT#" heading, carrying on across pages; each row's Deposit or Withdrawal column recovered from its balances (the first row's from the Beginning Balance, a row they can't place from the account's totals); a description's continuation lines folded into it; month-and-day dates ("SEP30") given the Period Ending's year; the account's last four digits from the member number and suffix. A loan or card account is reported, not read. Statement checks per account for Deposits/Credits, Withdrawals/Debits, Beginning Balance + activity = Ending Balance, and every dated line not read. Demo statement: `star-one-credit-union-synthetic-sample.pdf` |
+| Technology Credit Union | **Provisional** | Member statement (PDF), built from a scrambled real statement that kept no word naming the credit union, so it is known by its layout ("Member Number:", "Starting Balance", "Ending Balance for") or the techcu domain: every savings and checking account between its Starting Balance and Ending Balance lines; each amount signed by its balance; a description's continuation lines folded into it; the account's last four digits. A loan or card account is reported, not read. Statement checks per account for Starting Balance + activity = Ending Balance, the Summary line's deposits and withdrawals, and every dated line not read. Demo statement: `technology-credit-union-synthetic-sample.pdf` |
 | Merrill / Merrill Edge | **Untested** | Existing CMA coverage plus provisional Wealth Management coverage; Trust remains unsupported |
 | J.P. Morgan Wealth Management / Self-Directed Investing | **Untested** | Investment statement family, distinct from Chase banking and credit-card statements |
 | Morgan Stanley Global Stock Plan Services | **Untested** | Participant share purchase quarterly statement with releases, sales, and proceeds disbursements; validated against one 2021 statement |
@@ -152,7 +154,38 @@ that can identify a missing control should raise `ParserDiagnosticError` and
 declare every reportable identifier and static public label in
 `DIAGNOSTIC_FIELDS`, `DIAGNOSTIC_SIGNALS`, `DIAGNOSTIC_COUNTS`, and
 `DIAGNOSTIC_TERMS`; raw exception text
-is never inspected to populate `missingFields`. Reports must never contain the statement or extracted text,
+is never inspected to populate `missingFields`. A failure's message names the
+fields in `missingFields` by their `DIAGNOSTIC_FIELDS` labels ("It could not
+read the statement's Billing Period.").
+
+Schema 5 says why a bundled parser missed a field without needing a copy of
+the statement. `fieldLines` gives, for each `DIAGNOSTIC_FIELDS` label (or,
+for a parser that declares none, the generic statement period, opening and
+closing balance and account number), how the label was found (`exact`,
+`normalized` once a no-break space or ligature is read as plain text,
+`letters` with the spacing and doubled letters of some PDFs ignored, `split`
+across two lines, or `missing`), its page in the PDF and its line, and that
+line and the next as shapes: every amount, currency symbol and all, written
+`<amount>`, so not even its size shows (a bare whole number, "9000", can't
+be told from a year or a count, and keeps its digit count); every other
+letter, mark and digit, of any script, masked; a private-use or unassigned
+code point `<pua>`; and every other character but printable ASCII, and a
+dollar sign, written as its code point
+(`parser_common.line_shape`: `Billing Period: 10/15/25-11/14/25` becomes
+`Aaaaaaa Aaaaaa: 99/99/99-99/99/99`, `New balance $1,234.56` becomes
+`Aaa aaaaaaa <amount>`). A label far along its line is shaped from just
+before it (`column`). The missing fields' lines come first in a budget that
+keeps a report small; one still too long for a GitHub issue's URL is copied,
+and the issue asks for it to be pasted.
+`declinedParsers` names the bundled parsers for the same institution that
+were tried first and did not claim the statement; `textStats` counts lines,
+characters per page, unmapped `(cid:N)` glyphs, letters, marks and digits
+outside ASCII (compatibility forms such as ligatures apart) and private-use
+or unassigned code points;
+and `unusualChars` counts, by code point, the characters outside printable
+ASCII that are neither letters nor digits. A letter or digit is never named.
+OrbySystems drops any field line that is not a shape, and caps each of
+these, before a report can carry them. Reports must never contain the statement or extracted text,
 filename/path, names, account identifiers, dates, balances or amounts,
 security identifiers, raw PDF metadata, document hashes, or raw exception
 messages. Several parsers intentionally include exact rejected rows and

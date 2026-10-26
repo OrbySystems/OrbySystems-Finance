@@ -30,6 +30,7 @@ given file is - see _detect's docstring.
 
 import contextlib
 import dataclasses
+import functools
 import glob
 import importlib
 import importlib.util
@@ -39,6 +40,8 @@ import os
 import pkgutil
 import re
 import traceback
+import unicodedata
+from collections import Counter
 
 import statement_checks
 
@@ -50,10 +53,66 @@ import statement_checks
 SPACE_GAP_EM = 0.18
 
 
+# A character pdfminer measures as smaller than this, in points, is one
+# whose font's height it couldn't read: Citi's November 2025 statements draw
+# their labels in a font it measures at a quarter of a point. A character's
+# line is found by its top, and such a character's top is its baseline, so
+# its line is taken for the one above: "Billing Period:" was read alone, its
+# dates run into the "Account number ending in" line over it, character by
+# character. Only one that is also wider than _UNMEASURED_WIDTH times the
+# size measured: no glyph of a font measured right is (among the widest,
+# "@" is about 1), while each of those labels' letters is several times its
+# measured size. Real microprint, as small as it is measured, keeps its line.
+_UNMEASURED_SIZE = 1.0
+_UNMEASURED_WIDTH = 1.5
+
+
+def _unmeasured(char: dict) -> bool:
+    return (char["size"] < _UNMEASURED_SIZE and char.get("upright", True)
+            and char["x1"] - char["x0"] > _UNMEASURED_WIDTH * char["size"])
+
+
+def _resize_unmeasured(chars: list[dict]) -> list[dict] | None:
+    """chars with each one too small to have been measured (_unmeasured)
+    made as tall, from its baseline, as the measured characters on that
+    baseline - a label's own values - or else the page's usual size; None
+    when there is none to resize."""
+    measured = [c for c in chars if c["size"] >= _UNMEASURED_SIZE]
+    if not measured or not any(_unmeasured(c) for c in chars):
+        return None
+    sizes = sorted(c["size"] for c in measured)
+    usual = sizes[len(sizes) // 2]
+    by_bottom: dict[int, list[dict]] = {}
+    for c in measured:
+        by_bottom.setdefault(int(c["bottom"]), []).append(c)
+    out = []
+    for c in chars:
+        if not _unmeasured(c):
+            out.append(c)
+            continue
+        # A measured character's box reaches below the baseline by its
+        # descent, a fifth of its size or so.
+        near = sorted(m["size"] for key in range(int(c["bottom"]) - 5, int(c["bottom"]) + 6)
+                      for m in by_bottom.get(key, ()) if abs(m["bottom"] - c["bottom"]) <= 0.3 * m["size"] + 0.5)
+        size = near[len(near) // 2] if near else usual
+        grown = size - (c["bottom"] - c["top"])
+        out.append({**c, "size": size, "height": c["height"] + grown, "top": c["top"] - grown,
+                    "doctop": c["doctop"] - grown, "y1": c["y1"] + grown})
+    return out
+
+
 def page_text(page) -> str:
     """The text of one pdfplumber page as every parser reads it: words
-    apart by SPACE_GAP_EM of the font size are separate words."""
-    return page.extract_text(x_tolerance_ratio=SPACE_GAP_EM) or ""
+    apart by SPACE_GAP_EM of the font size are separate words, and a
+    character too small to have been measured (_resize_unmeasured) is read
+    at the size of its line, on its own baseline."""
+    chars = _resize_unmeasured(page.chars)
+    if chars is None:
+        return page.extract_text(x_tolerance_ratio=SPACE_GAP_EM) or ""
+    # What page.extract_text lays the page's text out with.
+    from pdfplumber.utils.text import chars_to_textmap
+
+    return chars_to_textmap(chars, x_tolerance_ratio=SPACE_GAP_EM).as_string
 
 # --- spreadsheet header/footer detection, shared by csv_statement.py's
 # CSV *and* .xlsx paths. A real export often brackets its table with a
@@ -205,6 +264,10 @@ _SUPPORT_TIERS = {
     SUPPORT_TIER_UNTESTED,
     SUPPORT_TIER_DEMO,
 }
+
+# The shape of a reportable diagnostic, ingest.DiagnosticSchemaVersion in
+# Go. 5 added fieldLines, declinedParsers, textStats and unusualChars.
+DIAGNOSTIC_SCHEMA_VERSION = 5
 
 _DIAGNOSTIC_CODES = {
     "PARSER_ACTIVITY_ROWS_NOT_FOUND",
@@ -444,6 +507,294 @@ def _diagnostic_field_presence(module, text: str | None) -> dict[str, bool]:
     return found
 
 
+# A line goes into a diagnostic as its shape: at most this many of its
+# characters, and this many of shape.
+_SHAPE_INPUT_LIMIT = 100
+_SHAPE_LIMIT = 160
+@functools.cache
+def _amount_re() -> re.Pattern:
+    """An amount: a number after any currency symbol (Unicode's Sc), or one
+    grouped or with decimals - "1,234.56", "1,23,456.00", "1.234,56",
+    "1'234.56", "1 234,56", "98.76", "1234567.8". Its digits, even masked,
+    would give its size. A dotted date ("08.15.26") is not one; nor is a
+    bare whole number ("9000"), which can't be told from a year or a count.
+    Made on the first failure, not on every read."""
+    currency = "".join(chr(c) for c in range(0x20000) if unicodedata.category(chr(c)) == "Sc")
+    # Digit groups apart by an apostrophe or a space that is not a word's;
+    # after a currency symbol, not a plain space, which would take in the
+    # next number on the line.
+    narrow = "'\u00a0\u2009\u202f"
+    groups = narrow + " "
+    return re.compile(
+        rf"[{re.escape(currency)}]\s*\d(?:[\d,.{narrow}]*\d)?"
+        r"|(?<![\d.,])(?:"
+        r"\d{1,3}(?:,\d{2,3})+(?:\.\d+)?"
+        r"|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
+        rf"|\d{{1,3}}(?:[{groups}]\d{{3}})+[.,]\d{{1,2}}"
+        r"|\d+[.,]\d{1,2}"
+        r")(?![\d.,]*\d)"
+    )
+
+
+def _shape_char(ch: str) -> str:
+    category = unicodedata.category(ch)
+    # A digit or letter of any script - a ligature, a full-width one, an
+    # accent or vowel sign written apart from its letter: written as its
+    # code point, it could be read back.
+    if category[0] == "N":
+        return "9"
+    if category[0] in "LM":
+        return "A" if category in ("Lu", "Lt") else "a"
+    # A font can map its letters to private-use code points, one for one;
+    # and one this Python doesn't know may be a letter in a newer Unicode.
+    if category in ("Co", "Cn"):
+        return "<pua>"
+    # A dollar sign is written as its code point, so no diagnostic has one:
+    # the parsers' tests take a "$" in one for an amount that got through.
+    if " " <= ch <= "~" and ch != "$":
+        return ch
+    return f"<U+{ord(ch):04X}>"
+
+
+def _shape_tokens(text: str):
+    """(start, end, shape) for each character of text, and for each amount
+    as a whole."""
+    at = 0
+    for amount in _amount_re().finditer(text):
+        for i in range(at, amount.start()):
+            yield i, i + 1, _shape_char(text[i])
+        yield amount.start(), amount.end(), "<amount>"
+        at = amount.end()
+    for i in range(at, len(text)):
+        yield i, i + 1, _shape_char(text[i])
+
+
+def line_shape(text: str, start: int = 0) -> str:
+    """A line as a diagnostic may carry it, from start: every amount
+    "<amount>", every other letter and digit, of any script, masked the
+    way statement_checks.shape masks them, a private-use glyph "<pua>",
+    and every other character but printable ASCII written as its code
+    point, so the one a parser's pattern tripped on shows:
+    "Billing\u00a0Period: 10/15/25" -> "Aaaaaaa<U+00A0>Aaaaaa: 99/99/99",
+    "New balance $1,234.56" -> "Aaa aaaaaaa <amount>". Amounts are found
+    on the whole line, so one a window cuts is still an amount."""
+    out = []
+    size = 0
+    for begin, end, token in _shape_tokens(text):
+        if end <= start:
+            continue
+        if begin >= start + _SHAPE_INPUT_LIMIT or size + len(token) > _SHAPE_LIMIT:
+            break
+        out.append(token)
+        size += len(token)
+    return "".join(out)
+
+
+# The fields a bundled parser that declares none of its own
+# (DIAGNOSTIC_FIELDS) is looked at for: what reading any statement takes,
+# each by the labels institutions print for it.
+_GENERIC_DIAGNOSTIC_FIELDS = {
+    "statementPeriod": ("statement period", "billing period", "billing cycle", "statement date",
+                        "closing date", "for the period", "period ending"),
+    "openingBalance": ("previous balance", "beginning balance", "opening balance", "starting balance"),
+    "closingBalance": ("new balance", "ending balance", "closing balance"),
+    "accountNumber": ("account number", "account ending"),
+}
+_FIELD_LINES_LIMIT = 16
+# The shapes field lines may carry, in all: a report goes to GitHub in an
+# issue's URL, which holds about 8 KB.
+_FIELD_LINES_BUDGET = 2400
+# A label further along its line than this is shaped from a little before
+# it, not from the line's start (a statement's columns read as one line).
+_LABEL_LEAD = 20
+# A label shorter than this, in letters, matches too much by its letters
+# alone.
+_LOOSE_LABEL_MIN = 6
+
+
+def _spaceless(text: str) -> str:
+    """text NFKC-normalized (a no-break space, a ligature, a full-width
+    letter read as plain ones), case-folded, with no whitespace."""
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text).casefold())
+
+
+def _squashed(text: str) -> str:
+    """text's letters and digits alone, case-folded, each run of one
+    character counted once: what is left of a label printed in a face some
+    PDFs draw twice ("BBiilllliinngg")."""
+    letters = re.sub(r"[^0-9a-z]", "", unicodedata.normalize("NFKC", text).casefold())
+    return re.sub(r"(.)\1+", r"\1", letters)
+
+
+def _locate_label(forms: list[list[tuple[str, str, str]]], labels: tuple[str, ...]):
+    """Where the first line carrying one of labels is, found the most exact
+    way first: (match, page index, line index, the label's column or -1),
+    or None. forms holds each page's lines as (lower-cased, _spaceless,
+    _squashed). The ways are: "exact", as the parser's marker is matched
+    (case aside); "normalized", once both are _spaceless; "letters", by
+    _squashed letters; "split", begun on one line and ended on the next."""
+    wanted = [(label.strip().lower(), _spaceless(label), _squashed(label)) for label in labels]
+    for match, form in (("exact", 0), ("normalized", 1), ("letters", 2)):
+        for p, lines in enumerate(forms):
+            for i, line in enumerate(lines):
+                for label in wanted:
+                    if form == 2 and len(label[2]) < _LOOSE_LABEL_MIN:
+                        continue
+                    if label[form] and label[form] in line[form]:
+                        return match, p, i, _label_column(line[0], label[0], form)
+    for p, lines in enumerate(forms):
+        filled = [i for i, line in enumerate(lines) if line[2]]
+        for i, j in zip(filled, filled[1:]):
+            joined = re.sub(r"(.)\1+", r"\1", lines[i][2] + lines[j][2])
+            if any(len(label[2]) >= _LOOSE_LABEL_MIN and label[2] in joined for label in wanted):
+                return "split", p, i, -1
+    return None
+
+
+def _label_column(line: str, label: str, form: int) -> int:
+    """Where label starts in line (both lower-cased), or -1: as written
+    when it was found so, else where its first word starts as a word,
+    which a no-break space or a word glued to the next leaves as it is."""
+    if form == 0:
+        return line.find(label)
+    if form == 1:
+        word = re.search(r"(?<![a-z0-9])" + re.escape(label.split()[0]), line)
+        return word.start() if word else -1
+    return -1
+
+
+def _diagnostic_field_lines(module, pages: list[str], first: list[str] = ()) -> dict[str, dict]:
+    """For each field the parser reads (DIAGNOSTIC_FIELDS, else
+    _GENERIC_DIAGNOSTIC_FIELDS), where its label was found and the shapes
+    of that line and the next: how it was found (_locate_label, or
+    "missing"), its page in the PDF and line, and line_shape of each - from
+    "column" (and "nextColumn"), counted from 1, when the label is further
+    along its line than a shape reaches. A pattern that missed a field is
+    then told why without the statement: a no-break space, a one-digit
+    date, a value on the line after. The fields in first (the missing
+    ones) have the first call on _FIELD_LINES_BUDGET; past it, a line's
+    next, then its shape, are left out."""
+    if not is_bundled(module) or not pages:
+        return {}
+    declared = getattr(module, "DIAGNOSTIC_FIELDS", None)
+    if isinstance(declared, dict) and declared:
+        fields = {
+            name: (marker,) for name, marker in declared.items()
+            if isinstance(name, str) and _DIAGNOSTIC_FIELD_RE.fullmatch(name)
+            and isinstance(marker, str) and marker.strip()
+        }
+    else:
+        fields = _GENERIC_DIAGNOSTIC_FIELDS
+    split_pages = [page.splitlines() for page in pages]
+    forms = [[(line.lower(), _spaceless(line), _squashed(line)) for line in lines] for lines in split_pages]
+    names = list(fields)[:_FIELD_LINES_LIMIT]
+    found: dict[str, dict] = {}
+    budget = _FIELD_LINES_BUDGET
+    for name in sorted(names, key=lambda name: name not in first):
+        located = _locate_label(forms, fields[name])
+        if located is None:
+            found[name] = {"match": "missing"}
+            continue
+        match, p, i, column = located
+        lines = split_pages[p]
+        start = column - _LABEL_LEAD if column > _SHAPE_INPUT_LIMIT - 2 * _LABEL_LEAD else 0
+        entry = {"match": match, "page": p + 1, "line": i + 1}
+        if start:
+            entry["column"] = start + 1
+        entry["shape"] = line_shape(lines[i], start)
+        following = next((line for line in lines[i + 1:] if line.strip()), None)
+        if following is not None:
+            # The value under a label in a column is in the same column.
+            next_start = start if len(following) > start else 0
+            if next_start:
+                entry["nextColumn"] = next_start + 1
+            entry["next"] = line_shape(following, next_start)
+        for key in ("next", "shape"):
+            if len(entry.get("shape", "")) + len(entry.get("next", "")) > budget:
+                entry.pop(key, None)
+                entry.pop(key + "Column" if key == "next" else "column", None)
+        budget -= len(entry.get("shape", "")) + len(entry.get("next", ""))
+        found[name] = entry
+    return {name: found[name] for name in names}
+
+
+_CID_GLYPH_RE = re.compile(r"\(cid:\d+\)")
+_UNUSUAL_CHARS_LIMIT = 16
+
+
+def _diagnostic_text(module, pages: list[str]) -> tuple[dict, dict[str, int]]:
+    """Counts of the text a statement read as, and of the characters in it
+    outside printable ASCII that are neither letters nor digits, by code
+    point ("U+00A0"): a no-break space, a dash, the replacement character.
+    The counts are its non-empty lines, the characters on each page, the
+    glyphs pdfplumber could not map to a character ("(cid:12)"), the
+    letters, marks and digits outside ASCII - those a compatibility form of
+    a plain one (a ligature, a full-width digit) apart - and the private-use
+    and unassigned code points. A letter or digit is only counted: by its
+    code point it could be read back."""
+    if not is_bundled(module) or not pages:
+        return {}, {}
+    unusual: Counter = Counter()
+    letters = compatibility = private_use = 0
+    for page in pages:
+        for ch in page:
+            if " " <= ch <= "~" or ch == "\n":
+                continue
+            category = unicodedata.category(ch)
+            if category[0] in "LMN":
+                if unicodedata.normalize("NFKC", ch) == ch:
+                    letters += 1
+                else:
+                    compatibility += 1
+            elif category in ("Co", "Cn"):
+                private_use += 1
+            else:
+                unusual[f"U+{ord(ch):04X}"] += 1
+    stats = {
+        "lineCount": sum(1 for page in pages for line in page.splitlines() if line.strip()),
+        "pageChars": [len(page) for page in pages][:64],
+        "cidGlyphs": sum(len(_CID_GLYPH_RE.findall(page)) for page in pages),
+        "nonAsciiLetters": letters,
+        "compatibilityLetters": compatibility,
+        "privateUseChars": private_use,
+    }
+    commonest = sorted(unusual.items(), key=lambda item: (-item[1], item[0]))[:_UNUSUAL_CHARS_LIMIT]
+    return stats, dict(commonest)
+
+
+def _declined_parsers(module, parsers: list | None) -> list[str]:
+    """The bundled parsers for module's institution tried before it, which
+    did not claim the statement: a failure in a layout a verified parser
+    turned down then says so (citi_credit_card_family failing where
+    citi_credit_card declined)."""
+    if not parsers or not is_bundled(module) or module not in parsers:
+        return []
+    institution = getattr(module, "INSTITUTION", None)
+    if not isinstance(institution, str) or not institution:
+        return []
+    declined = []
+    for other in parsers[: parsers.index(module)]:
+        if is_bundled(other) and getattr(other, "INSTITUTION", None) == institution:
+            declined.append(_safe_label(other.__name__.rsplit(".", 1)[-1], "unknown_parser", 80))
+    return declined[:8]
+
+
+def _missing_fields_sentence(module, missing_fields: list[str]) -> str:
+    """A sentence naming the fields a parser could not read, by the labels
+    it looks for ("It could not read the statement's Billing Period."), or
+    "" when it names none. The labels are the parser's own, never the
+    statement's."""
+    declared = getattr(module, "DIAGNOSTIC_FIELDS", None)
+    if not isinstance(declared, dict):
+        return ""
+    labels = [_safe_label(declared.get(field), "", 40) for field in missing_fields]
+    labels = [label for label in labels if label]
+    if not labels:
+        return ""
+    listed = labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
+    return f"It could not read the statement's {listed}. "
+
+
 def _diagnostic_error_signals(module, error: Exception) -> dict[str, bool]:
     """Filter parser-supplied booleans through a bundled-module allowlist."""
     if not module.__name__.startswith(("institutions.", "csv_institutions.")):
@@ -537,14 +888,21 @@ def _parser_revision(module) -> int | None:
 
 
 def parser_failure(module, error: Exception, input_format: str, input_stats: dict,
-                   text: str | None = None) -> tuple[str, dict]:
+                   text: str | list[str] | None = None, parsers: list | None = None) -> tuple[str, dict]:
     """Build the user-facing message and privacy-safe diagnostic for a
     parser that matched a document but failed while parsing it.
 
+    text is the document's text, whole or as its pages (which then gives
+    each field line its page); parsers is the try list the parser was
+    claimed from (_declined_parsers).
+
     The returned dict is safe to preview/copy/report: it contains no raw
     exception, document text, file name/path, dates, account identifiers,
-    securities, or monetary values.
+    securities, or monetary values. Lines are carried only as shapes
+    (line_shape).
     """
+    pages = [text] if isinstance(text, str) else list(text or [])
+    text = "\n".join(pages)
     qualified_name = module.__name__
     bundled = qualified_name.startswith(("institutions.", "csv_institutions."))
     parser_id = (
@@ -562,6 +920,8 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     tier = module_support_tier(module)
     code, stage = _classify_parser_error(error)
     reference = f"{parser_id.replace('_', '-').upper()}-{code.removeprefix('PARSER_')}"
+    missing_fields = _diagnostic_missing_fields(module, error)
+    missing = _missing_fields_sentence(module, missing_fields)
     if not bundled:
         # The dispatcher names its file beside this, under
         # "failedExtraParsers" (failed_extra_parsers), never in it: the
@@ -573,24 +933,24 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     elif tier == SUPPORT_TIER_UNTESTED:
         message = (
             f"OrbySystems recognized this as {institution}, but that format has not been "
-            f"confirmed on real statements yet, and this one did not read cleanly. No data was "
-            f"imported. A scrambled copy sent to OrbySystems lets us support it. "
+            f"confirmed on real statements yet, and this one did not read cleanly. {missing}No data "
+            f"was imported. A scrambled copy sent to OrbySystems lets us support it. "
             f"Error reference: {reference}."
         )
     elif tier == SUPPORT_TIER_PROVISIONAL:
         message = (
             f"OrbySystems recognized this as a provisional {institution} format, but this "
-            f"statement layout is not covered yet. No data was imported. "
+            f"statement layout is not covered yet. {missing}No data was imported. "
             f"Error reference: {reference}."
         )
     else:
         message = (
             f"OrbySystems recognized this as {institution}, but could not parse the "
-            f"{stage.replace('_', ' ')} section. No data was imported. "
+            f"{stage.replace('_', ' ')} section. {missing}No data was imported. "
             f"Error reference: {reference}."
         )
     diagnostic = {
-        "schemaVersion": 4,
+        "schemaVersion": DIAGNOSTIC_SCHEMA_VERSION,
         "reference": reference,
         "code": code,
         "parserId": parser_id,
@@ -609,9 +969,24 @@ def parser_failure(module, error: Exception, input_format: str, input_stats: dic
     field_presence = _diagnostic_field_presence(module, text)
     if field_presence:
         diagnostic["fieldPresence"] = field_presence
-    missing_fields = _diagnostic_missing_fields(module, error)
     if missing_fields:
         diagnostic["missingFields"] = missing_fields
+    # What the statement's text looks like is extra: a fault in reading it
+    # must not cost the user the failure's own message.
+    try:
+        field_lines = _diagnostic_field_lines(module, pages, missing_fields)
+        declined = _declined_parsers(module, parsers)
+        text_stats, unusual_chars = _diagnostic_text(module, pages)
+    except Exception:  # noqa: BLE001
+        field_lines, declined, text_stats, unusual_chars = {}, [], {}, {}
+    if field_lines:
+        diagnostic["fieldLines"] = field_lines
+    if declined:
+        diagnostic["declinedParsers"] = declined
+    if text_stats:
+        diagnostic["textStats"] = text_stats
+    if unusual_chars:
+        diagnostic["unusualChars"] = unusual_chars
     signals = _diagnostic_error_signals(module, error)
     if signals:
         diagnostic["signals"] = signals
@@ -654,7 +1029,7 @@ def unsupported_format_diagnostic(input_format: str, input_stats: dict, head_tex
     an amount or start with a date - never a label or an amount.
     """
     diagnostic = {
-        "schemaVersion": 4,
+        "schemaVersion": DIAGNOSTIC_SCHEMA_VERSION,
         "reference": "PARSER-NOT-FOUND",
         "code": "PARSER_NOT_FOUND",
         "parserId": "",
@@ -1628,7 +2003,7 @@ def expected_parser_not_loaded(expected_parser: str | None, unloaded: list,
         code, _ = _classify_load_error(error, path)
         message = f"expected parser {expected_parser} doesn't load, so it was never tried: {error}"
         diagnostic = {
-            "schemaVersion": 4,
+            "schemaVersion": DIAGNOSTIC_SCHEMA_VERSION,
             "reference": f"EXTERNAL-PARSER-{code.removeprefix('PARSER_')}",
             "code": code,
             "parserId": "external_parser",

@@ -247,3 +247,11 @@ def test_bad_answers_are_an_error_not_a_parse(tmp_path):
     _chase_like(pdf, ["12/24 COFFEE HOUSE 20.00"])
     assert "error" in _dispatch(pdf, "--adjust", "{not json")
     assert "error" in _dispatch(pdf, "--adjust", json.dumps({"rewrite": []}))
+
+
+def test_a_not_read_lines_shape_masks_letters_of_every_script():
+    # A letter outside ASCII left as it is could be read back.
+    assert sc.shape("01/15 COFFEE 4.50") == "99/99 AAAAAA 9.99"
+    assert sc.shape("Jos\u00e9 M\u00fcller \u0418\u0432\u0430\u043d") == "Aaaa Aaaaaa Aaaa"
+    # Numbers of every kind, and an accent written apart from its letter.
+    assert sc.shape("\u2460\u00b2\u00bd\u216b e\u0301") == "9999 aa"

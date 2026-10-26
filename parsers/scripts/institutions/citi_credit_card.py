@@ -29,6 +29,7 @@ every amount and derived balance is flipped to OrbySystems' cash-impact
 convention (purchases negative, payments and credits positive).
 """
 
+import os
 import re
 from datetime import datetime
 
@@ -39,7 +40,7 @@ from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 INSTITUTION = "Citi"
-PARSER_REVISION = 3
+PARSER_REVISION = 4
 DIAGNOSTIC_MARKERS = {
     "account_summary": "Account Summary",
     "transaction_table": "date description amount",
@@ -57,11 +58,24 @@ DIAGNOSTIC_FIELDS = {
     "creditLimit": "Credit Limit",
 }
 
+# True when the billing period's pattern matched but its dates are not a
+# billing cycle's; False when it did not match at all.
+DIAGNOSTIC_SIGNALS = ("billingPeriodDatesInvalid",)
+
+# The billing period, "Billing Period: 10/15/25-11/14/25", and the ways a
+# statement's text can give the same line: any space between the words or
+# none (a no-break space, words glued in small type), no colon, one-digit
+# months and days, a four-digit year, any dash or "to".
 _PERIOD_RE = re.compile(
-    r"Billing Period:\s*(\d{2})/(\d{2})/(\d{2,4})\s*[-–—]\s*"
-    r"(\d{2})/(\d{2})/(\d{2,4})",
+    r"Billing\s*Period\s*:?\s*"
+    r"(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4}|\d{2})(?!\d)"
+    r"\s*(?:[-\u2010-\u2015\u2212]|to)\s*"
+    r"(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4}|\d{2})(?!\d)",
     re.IGNORECASE,
 )
+# The longest a billing cycle runs, in days. A closing date further out is
+# a misread - "09/14/2630 days", a year glued to the next word.
+_LONGEST_CYCLE = 62
 _ACCOUNT_RE = re.compile(r"Account number ending in\s*:?\s*(\d{3,4})", re.IGNORECASE)
 
 # A figure as the Account Summary prints it, its sign before or after the
@@ -100,12 +114,16 @@ _SECTION_TOTAL_RE = re.compile(
     r"(?P<sign>-)?\$?(?P<num>[\d,]+\.\d{2})\s*$",
     re.IGNORECASE,
 )
+# A row can run on into the column beside the table (the rewards summary on
+# a Costco card's later page): words after its amount, with no figure in
+# them. A column line that has one leaves the row unread, held for review.
+_BESIDE = r"(?:\s+[A-Za-z][^\d$]*)?"
 _TWO_DATE_ROW_RE = re.compile(
-    r"^(\d{2}/\d{2})\s+\d{2}/\d{2}\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})\s*$"
+    r"^(\d{2}/\d{2})\s+\d{2}/\d{2}\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE + r"\s*$"
 )
 # Citi leaves Sale Date blank for some payments, so pdfplumber emits only
 # the Post Date at the start of the row.
-_ONE_DATE_ROW_RE = re.compile(r"^(\d{2}/\d{2})\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})\s*$")
+_ONE_DATE_ROW_RE = re.compile(r"^(\d{2}/\d{2})\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE + r"\s*$")
 # Starts like a row; reported as not read when neither row form takes it.
 _DATED_RE = re.compile(r"^\d{2}/\d{2}\b")
 # Starts with a date and ends with an amount, anywhere in the statement:
@@ -128,9 +146,13 @@ _ANNUAL_SUBTOTAL_RE = re.compile(r"^Subtotal\s+(-?\$\s*[\d,]+\.\d{2})\s*$", re.I
 def detect(head_text: str) -> tuple[bool, str]:
     lower = head_text.lower()
     if "costco anywhere visa" in lower and "citicards.com" in lower:
-        if not _PERIOD_RE.search(head_text):
-            return False, "Citi Costco markers found, but no Billing Period"
-        return True, "matched Citi Costco Anywhere Visa monthly statement"
+        if _PERIOD_RE.search(head_text):
+            return True, "matched Citi Costco Anywhere Visa monthly statement"
+        # An app that reads the label apart from its dates (_read_again):
+        # parse() reads the statement again.
+        if re.search(r"billing\s*period", lower):
+            return True, "matched Citi Costco Anywhere Visa monthly statement, its billing period to be read again"
+        return False, "Citi Costco markers found, but no Billing Period"
     if (
         _ANNUAL_TITLE_RE.search(head_text)
         and "totals by category" in lower
@@ -160,9 +182,12 @@ def _period(combined_text: str) -> tuple[datetime | None, datetime | None]:
         return None, None
     om, od, oy, cm, cd, cy = match.groups()
     try:
-        return datetime(_year(oy), int(om), int(od)), datetime(_year(cy), int(cm), int(cd))
+        opening, closing = datetime(_year(oy), int(om), int(od)), datetime(_year(cy), int(cm), int(cd))
     except ValueError:
         return None, None
+    if not 0 < (closing - opening).days <= _LONGEST_CYCLE:
+        return None, None
+    return opening, closing
 
 
 def _transaction_date(raw: str, closing: datetime) -> str | None:
@@ -383,6 +408,7 @@ def _parse_monthly(pages_text: list[str]) -> dict:
             code="PARSER_REQUIRED_DATA_MISSING",
             stage="metadata",
             missing_fields=("billingPeriod",),
+            signals={"billingPeriodDatesInvalid": bool(_PERIOD_RE.search(combined))},
         )
 
     found, rows, row_sections, totals, order, unread = _read_table(pages_text, closing)
@@ -441,8 +467,64 @@ def _parse_monthly(pages_text: list[str]) -> dict:
     }
 
 
+# Characters pdfminer measures as smaller than a point but that are wider
+# than one and a half times that: a font whose height it could not read, as
+# Citi's November 2025 statements draw their labels in. parser_common.page_text
+# reads them at their line's size; an app older than that (OrbySystems 1.0.3)
+# reads such a label's dates into the line above, so this parser, delivered
+# to it, reads the statement again itself. The same rules as
+# parser_common._resize_unmeasured, which a test holds equal.
+def _own_resize_unmeasured(chars: list[dict]) -> list[dict] | None:
+    def unmeasured(c):
+        return c["size"] < 1.0 and c.get("upright", True) and c["x1"] - c["x0"] > 1.5 * c["size"]
+
+    measured = [c for c in chars if c["size"] >= 1.0]
+    if not measured or not any(unmeasured(c) for c in chars):
+        return None
+    sizes = sorted(c["size"] for c in measured)
+    usual = sizes[len(sizes) // 2]
+    by_bottom: dict[int, list[dict]] = {}
+    for c in measured:
+        by_bottom.setdefault(int(c["bottom"]), []).append(c)
+    out = []
+    for c in chars:
+        if not unmeasured(c):
+            out.append(c)
+            continue
+        near = sorted(m["size"] for key in range(int(c["bottom"]) - 5, int(c["bottom"]) + 6)
+                      for m in by_bottom.get(key, ()) if abs(m["bottom"] - c["bottom"]) <= 0.3 * m["size"] + 0.5)
+        size = near[len(near) // 2] if near else usual
+        grown = size - (c["bottom"] - c["top"])
+        out.append({**c, "size": size, "height": c["height"] + grown, "top": c["top"] - grown,
+                    "doctop": c["doctop"] - grown, "y1": c["y1"] + grown})
+    return out
+
+
+def _read_again(pdf_path: str) -> list[str] | None:
+    """The statement's pages, read as parser_common.page_text reads them,
+    when any has a character too small to have been measured; else None,
+    the app's own reading being that already."""
+    import pdfplumber
+    from pdfplumber.utils.text import chars_to_textmap
+
+    resize = getattr(parser_common, "_resize_unmeasured", None) or _own_resize_unmeasured
+    gap = getattr(parser_common, "SPACE_GAP_EM", 0.18)
+    pages, resized = [], False
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            chars = resize(page.chars)
+            if chars is None:
+                pages.append(page.extract_text(x_tolerance_ratio=gap) or "")
+                continue
+            resized = True
+            pages.append(chars_to_textmap(chars, x_tolerance_ratio=gap).as_string)
+    return [text for text in pages if text] if resized else None
+
+
 def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> dict:  # noqa: ARG001
     combined = "\n".join(pages_text)
     if _ANNUAL_TITLE_RE.search(combined):
         return _parse_annual(pages_text)
+    if not _PERIOD_RE.search(combined) and pdf_path and os.path.exists(pdf_path):
+        pages_text = _read_again(pdf_path) or pages_text
     return _parse_monthly(pages_text)

@@ -55,7 +55,7 @@ def test_each_tier_says_what_happens_next_when_a_statement_does_not_read() -> No
         module = SimpleNamespace(__name__="institutions.example_bank", INSTITUTION="Example Bank", SUPPORT_TIER=tier)
         message, diagnostic = parser_common.parser_failure(module, ValueError("boom"), "pdf", {})
         assert diagnostic["supportTier"] == tier
-        assert diagnostic["schemaVersion"] == 4
+        assert diagnostic["schemaVersion"] == parser_common.DIAGNOSTIC_SCHEMA_VERSION
         return message
 
     assert "scrambled copy" in failure(parser_common.SUPPORT_TIER_UNTESTED)

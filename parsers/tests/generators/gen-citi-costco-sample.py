@@ -8,6 +8,7 @@ FONT_SIZE = 9
 LINE_H = 13
 OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-costco-synthetic-sample.pdf"
 ANNUAL_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-annual-synthetic-sample.pdf"
+SMALL_LABELS_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-costco-small-labels-synthetic-sample.pdf"
 
 
 def escape(value: str) -> bytes:
@@ -15,6 +16,33 @@ def escape(value: str) -> bytes:
 
 
 def build_pdf(pages: list[list[str]]) -> bytes:
+    streams = []
+    for lines in pages:
+        stream = bytearray()
+        y = PAGE_H - 45
+        for line in lines:
+            stream.extend(f"BT /F1 {FONT_SIZE} Tf 1 0 0 1 40 {y} Tm (".encode())
+            stream.extend(escape(line))
+            stream.extend(b") Tj ET\n")
+            y -= LINE_H
+        streams.append(bytes(stream))
+    return pdf_of(streams)
+
+
+def build_runs_pdf(pages: list[list[tuple[float, float, float, float, str]]]) -> bytes:
+    """Each page a list of runs: (x, y, font size, horizontal scale %, text)."""
+    streams = []
+    for runs in pages:
+        stream = bytearray()
+        for x, y, size, scale, text in runs:
+            stream.extend(f"BT /F1 {size} Tf {scale} Tz 1 0 0 1 {x} {y} Tm (".encode())
+            stream.extend(escape(text))
+            stream.extend(b") Tj ET\n")
+        streams.append(bytes(stream))
+    return pdf_of(streams)
+
+
+def pdf_of(streams: list[bytes]) -> bytes:
     out = bytearray(b"%PDF-1.4\n")
     offsets: dict[int, int] = {}
 
@@ -24,24 +52,17 @@ def build_pdf(pages: list[list[str]]) -> bytes:
         out.extend(body)
         out.extend(b"\nendobj\n")
 
-    page_objects = [4 + 2 * index for index in range(len(pages))]
+    page_objects = [4 + 2 * index for index in range(len(streams))]
     add(1, b"<< /Type /Catalog /Pages 2 0 R >>")
-    add(2, f"<< /Type /Pages /Kids [{' '.join(f'{n} 0 R' for n in page_objects)}] /Count {len(pages)} >>".encode())
+    add(2, f"<< /Type /Pages /Kids [{' '.join(f'{n} 0 R' for n in page_objects)}] /Count {len(streams)} >>".encode())
     add(3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-    for index, lines in enumerate(pages):
+    for index, stream in enumerate(streams):
         page_number = page_objects[index]
         content_number = page_number + 1
         add(page_number, (
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] "
             f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_number} 0 R >>"
         ).encode())
-        stream = bytearray()
-        y = PAGE_H - 45
-        for line in lines:
-            stream.extend(f"BT /F1 {FONT_SIZE} Tf 1 0 0 1 40 {y} Tm (".encode())
-            stream.extend(escape(line))
-            stream.extend(b") Tj ET\n")
-            y -= LINE_H
         add(content_number, f"<< /Length {len(stream)} >>\nstream\n".encode() + stream + b"endstream")
 
     xref = len(out)
@@ -94,6 +115,28 @@ pages = [
 
 OUT.write_bytes(build_pdf(pages))
 print(OUT)
+
+# The same statement as Citi's November 2025 ones draw it: the account and
+# billing-period labels in a font pdfminer measures at a quarter of a point
+# (drawn here at 0.24pt, stretched to their width), their values in ordinary
+# type on the same baseline, the two lines 9.5pt apart, the account label
+# over the dates. Read by its tops, the billing period's dates join the
+# account line, letter by letter.
+TINY, STRETCH = 0.24, 1000
+top = PAGE_H - 45
+small_labels_first_page = [
+    (40, top, FONT_SIZE, 100, pages[0][0]),
+    (60, top - LINE_H, TINY, STRETCH, "Account number ending in:"),
+    (150, top - LINE_H, FONT_SIZE, 100, "4455"),
+    (40, top - LINE_H - 9.5, TINY, STRETCH, "Billing Period:"),
+    (70, top - LINE_H - 9.5, FONT_SIZE, 100, "08/15/26-09/14/26"),
+] + [(40, top - LINE_H - 9.5 - LINE_H * (n + 1), FONT_SIZE, 100, line)
+      for n, line in enumerate([pages[0][2]] + pages[0][4:])]
+SMALL_LABELS_OUT.write_bytes(build_runs_pdf([
+    small_labels_first_page,
+    [(40, top - LINE_H * n, FONT_SIZE, 100, line) for n, line in enumerate(pages[1])],
+]))
+print(SMALL_LABELS_OUT)
 
 annual_pages = [
     [

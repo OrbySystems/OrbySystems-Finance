@@ -380,8 +380,10 @@ def main() -> None:
         call_detect, parsers, bundled, fall_through,
     )
     if read.error is not None:
+        # Every page, the empty ones too, so a field line's page is the
+        # PDF's.
         message, diagnostic = parser_common.parser_failure(
-            read.module, read.error, "pdf", input_stats, "\n".join(pages_text)
+            read.module, read.error, "pdf", input_stats, head_text + tail_text, parsers
         )
         out = {"error": message, "diagnostic": diagnostic}
         if read.failed:

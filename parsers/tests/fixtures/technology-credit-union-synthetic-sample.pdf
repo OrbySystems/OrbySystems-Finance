@@ -1,0 +1,61 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 2320 >>
+stream
+BT /F1 9 Tf 1 0 0 1 40 747 Tm (Member Number: 123456) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 734 Tm (Statement Date: 09/30/2026) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 721 Tm (Page: 1 of 1) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 708 Tm (PAT EXAMPLE) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 695 Tm (100 SAMPLE STREET) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 682 Tm (SAMPLE CITY CA 95000-0000) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 669 Tm (When receiving direct deposits, ACH payments, and incoming wire transfers, use our Routing Number \(RTN\): 000000000) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 656 Tm (Savings) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 643 Tm (Date Transaction Description Amount Balance) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 630 Tm (SHARE SAVINGS 1234567890123) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 617 Tm (09/01 Starting Balance $1,529.17) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 604 Tm (09/15 Withdrawal Transfer to Checking -200.00 1,329.17) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 591 Tm (09/30 Deposit Dividend 0.150% 2.44 1,331.61) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 578 Tm (Annual % Yield Earned Ending 09/30/2026 : 0.15%) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 565 Tm (09/30 Ending Balance for SHARE SAVINGS $1,331.61) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 552 Tm (Summary: 1 Deposit : $2.44 1 Withdrawal : $200.00 YTD Dividends Paid : $6.80) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 539 Tm (Checking) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 526 Tm (Date Transaction Description Amount Balance) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 513 Tm (INTEREST CHECKING 9876543210987) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 500 Tm (09/01 Starting Balance $3,072.66) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 487 Tm (09/03 Withdrawal POS SAMPLE GROCERY -61.20 3,011.46) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 474 Tm (SAMPLE CITY CA) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 461 Tm (09/15 Deposit Transfer from Savings 200.00 3,211.46) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 448 Tm (09/20 Withdrawal ACH SAMPLE UTILITY -88.35 3,123.11) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 435 Tm (09/30 Deposit Dividend 0.050% 0.13 3,123.24) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 422 Tm (Annual % Yield Earned Ending 09/30/2026 : 0.05%) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 409 Tm (09/30 Ending Balance for INTEREST CHECKING $3,123.24) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 396 Tm (Summary: 2 Deposits : $200.13 2 Withdrawals : $149.55 YTD Dividends Paid : $1.12) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 383 Tm (Total Dividends Paid : $7.92) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 370 Tm (www.techcu.com) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+2682
+%%EOF
