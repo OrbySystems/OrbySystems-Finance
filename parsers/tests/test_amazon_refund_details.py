@@ -1,7 +1,10 @@
 """Amazon's refund details export (csv_institutions/amazon_refund_details.py),
 against a wholly invented export with the real one's columns."""
 
+import pytest
+
 from conftest import approx
+from csv_institutions import amazon_refund_details
 
 FIXTURE = "amazon-refund-details-synthetic-sample.csv"
 ORDERS = "amazon-order-history-synthetic-sample.csv"
@@ -31,7 +34,7 @@ def test_the_exports_repeats_of_a_refund_are_one_refund(run_statement):
 
 def test_a_refund_not_yet_paid_is_left_out(run_statement):
     refunds = _refunds(run_statement)
-    assert len(refunds) == 4
+    assert len(refunds) == 5
     assert all(r["order_id"] != "111-0000006-0000006" for r in refunds)
 
 
@@ -55,3 +58,16 @@ def test_no_order_gets_back_more_than_it_cost(run_statement):
     assert back and set(back) <= set(spent)
     for order_id, amount in back.items():
         assert amount <= spent[order_id] + 0.005, order_id
+
+
+def test_a_refund_with_no_refund_date_is_dated_when_it_was_created(run_statement):
+    undated = [r for r in _refunds(run_statement) if r["order_id"] == "111-0000001-0000001"]
+    assert [(r["date"], r["amount"]) for r in undated] == [("2026-03-10", 19.49)]
+    assert undated[0]["charge_group"] == "111-0000001-0000001/refund/2026-03-10"
+
+
+def test_a_date_in_another_format_fails_the_file():
+    row = {"Order ID": "111-0000001-0000001", "Payment Status": "Completed", "Refund Amount": "5.00",
+           "Refund Date": "03/10/2026", "Creation Date": "03/10/2026"}
+    with pytest.raises(ValueError, match="date format has changed"):
+        amazon_refund_details.parse([row], "Refund Details.csv")

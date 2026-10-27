@@ -19,7 +19,18 @@ What the file is like, checked against a real export by counting rows:
     refunds come to more than it cost.
   * Every row of that export was a completed refund. A row whose Payment
     Status says anything else is left out: the money has not come back.
+  * A completed refund can say "Not Applicable" for its Refund Date (seen
+    in a scrambled real export). Its Creation Date is when the refund was
+    made - the same day as the Refund Date, or the day before, wherever
+    both are given - so it is dated by that instead. Its repeats differ
+    only in Creation Date, so they are told apart without it, and the
+    earliest one dates it.
+  * A date that is still not YYYY-MM-DD fails the file by name: the
+    export's format has changed, and leaving those rows out would quietly
+    lose refunds.
 """
+
+import re
 
 import parser_common
 
@@ -32,7 +43,13 @@ _REQUIRED_HEADER = {
     "Payment Status", "Refund Amount", "Refund Date", "Reversal Reason", "Reversal Status",
 }
 
+# What the export prints in a cell with nothing in it.
 _NOT_AVAILABLE = "not available"
+_EMPTY = {_NOT_AVAILABLE, "not applicable"}
+
+
+# A date as the export writes it: YYYY-MM-DD, then the time.
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
@@ -44,7 +61,7 @@ def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
 
 def _text(row: dict, key: str) -> str:
     value = (row.get(key) or "").strip()
-    return "" if value.lower() == _NOT_AVAILABLE else value
+    return "" if value.lower() in _EMPTY else value
 
 
 def _number(row: dict, key: str) -> float | None:
@@ -57,20 +74,29 @@ def _number(row: dict, key: str) -> float | None:
 
 def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
     rows = [{(k or "").strip().lstrip("﻿"): v for k, v in row.items()} for row in rows]
-    refunds, seen = [], set()
+    # A refund's own rows, once the export's repeats (see the module
+    # docstring) are one: keyed by order, Refund Date as printed and amount.
+    refunds_by_key = {}
     for row in rows:
         order_id = _text(row, "Order ID")
-        refunded_at = _text(row, "Refund Date")
         amount = _number(row, "Refund Amount")
-        if not order_id or not refunded_at[:10] or not amount:
+        if not order_id or not amount:
             continue
-        if _text(row, "Payment Status").lower() not in ("", "completed"):
+        # Read as printed: "Not Applicable" here is not a completed refund.
+        status = (row.get("Payment Status") or "").strip().lower()
+        if status not in ("", "completed", _NOT_AVAILABLE):
             continue
-        # The export's repeats of one refund (see the module docstring).
-        key = (order_id, refunded_at, round(amount, 2))
-        if key in seen:
-            continue
-        seen.add(key)
+        refund_date = _text(row, "Refund Date")
+        key = (order_id, refund_date, round(amount, 2))
+        refunds_by_key.setdefault(key, []).append(row)
+
+    refunds = []
+    for (order_id, refund_date, amount), same in refunds_by_key.items():
+        refunded_at = refund_date or min((d for r in same if (d := _text(r, "Creation Date"))), default="")
+        if not _DATE.match(refunded_at):
+            raise ValueError("amazon_refund_details: a completed refund's date is not YYYY-MM-DD; "
+                             "the export's date format has changed")
+        row = same[0]
         reason = _text(row, "Reversal Reason")
         refund = {
             "date": refunded_at[:10],

@@ -37,6 +37,15 @@ REFUNDS = [
     # Not paid yet: not money back.
     ("2026-05-03T09:00:00Z", "USD", "111-0000006-0000006", "Pending", "1", "13.08",
      "2026-05-04T09:00:00Z", "Customer return", "Amazon.com"),
+    # A completed refund the export gives no Refund Date, repeated for its
+    # order's two creation dates: one refund, dated by the earlier.
+    ("2026-03-11T12:00:00Z", "USD", "111-0000001-0000001", "Completed", "1", "19.49",
+     "Not Applicable", "Customer return", "Amazon.com"),
+    ("2026-03-10T12:00:00Z", "USD", "111-0000001-0000001", "Completed", "1", "19.49",
+     "Not Applicable", "Customer return", "Amazon.com"),
+    # A Payment Status of "Not Applicable" is not a completed refund.
+    ("2026-03-12T12:00:00Z", "USD", "111-0000001-0000001", "Not Applicable", "1", "6.71",
+     "2026-03-12T12:00:00Z", "Customer return", "Amazon.com"),
     # Another country's store.
     ("2026-04-25T05:00:00.000Z", "INR", "404-0000005-0000005", "Completed", "1", "1,899.00",
      "2026-04-27T05:00:00.000Z", "Item not received", "Amazon.in"),
