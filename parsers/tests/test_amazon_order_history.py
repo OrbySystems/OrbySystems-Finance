@@ -2,6 +2,7 @@
 against a wholly invented export with the real one's columns."""
 
 from conftest import approx
+from csv_institutions import amazon_order_history
 
 FIXTURE = "amazon-order-history-synthetic-sample.csv"
 
@@ -77,3 +78,26 @@ def test_a_subscribe_and_save_delivery_is_marked_by_line(run_statement):
     coffee = [i for i in items if i["item_id"] == "B0EXAMPLE02"]
     assert [(i["date"], i["subscribe_and_save"]) for i in coffee] == [("2026-03-02", False), ("2026-05-10", True)]
     assert approx(coffee[1]["discount"], -0.97) and approx(coffee[1]["amount"], -20.19)
+
+
+def _one_item(**cells):
+    row = {"ASIN": "B0EXAMPLE09", "Order ID": "111-0000009-0000009", "Order Date": "2026-06-01T10:00:00Z",
+           "Order Status": "Closed", "Original Quantity": "1", "Product Name": "Sample Brand Notebook",
+           "Ship Date": "2026-06-02T10:00:00Z", "Total Amount": "5.00", "Website": "Amazon.com"}
+    row.update(cells)
+    return amazon_order_history.parse([row], "Order History.csv")["tables"]["retail_items"]
+
+
+def test_not_applicable_is_an_empty_cell():
+    item = _one_item(**{"Product Name": "Not Applicable", "Payment Method Type": "Not Applicable"})[0]
+    assert item["description"] == "Amazon item B0EXAMPLE09" and "payment_method" not in item
+
+
+def test_an_item_with_no_ship_date_is_its_orders_charge_alone():
+    for ship_date in ("Not Available", "Not Applicable", "Pending"):
+        assert _one_item(**{"Ship Date": ship_date})[0]["charge_group"] == "111-0000009-0000009", ship_date
+
+
+def test_an_item_shipped_in_two_parts_is_charged_with_the_first():
+    both = "2026-06-02T10:00:00Z and 2026-06-04T10:00:00Z"
+    assert _one_item(**{"Ship Date": both})[0]["charge_group"] == "111-0000009-0000009/2026-06-02"

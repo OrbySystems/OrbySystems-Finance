@@ -6,7 +6,9 @@ Number,Currency,Gift Message,...,Order Date,Order ID,Order Status,Original
 Quantity,Payment Method Type,...,Product Name,...,Ship Date,Shipment Item
 Subtotal,Shipment Item Subtotal Tax,...,Shipping Charge,...,Total
 Amount,Total Discounts,Unit Price,Unit Price Tax,Website". A field the
-export has nothing for reads "Not Available".
+export has nothing for reads "Not Available", or "Not Applicable" (in
+a real export, Purchase Order Number; the export's other files use it
+more): both are read as empty.
 
 What the columns mean, checked against a real export by counting rows:
   * Total Amount is the line in full: (Unit Price + Unit Price Tax) x
@@ -15,7 +17,10 @@ What the columns mean, checked against a real export by counting rows:
   * Shipment Item Subtotal and its tax are the shipment's, repeated on
     every row of it, so they are not read as a row's own.
   * Amazon charges a card per shipment, and an order can ship in several.
-    Order ID plus the ship date is the charge group.
+    Order ID plus the ship date is the charge group. A row whose item went
+    in two parts prints both ship dates ("<date> and <date>"); the first is
+    its charge group, so neither card charge for it matches that group's
+    total exactly. A row with no readable ship date is the order's alone.
   * A cancelled item has quantity 0 and cost nothing; it is left out.
   * Shipping Option carries a code with "sns" as a word of its own on a
     Subscribe & Save delivery (checked against a real export's
@@ -41,7 +46,11 @@ _REQUIRED_HEADER = {
     "Total Discounts", "Unit Price", "Unit Price Tax", "Website",
 }
 
-_NOT_AVAILABLE = "not available"
+# What the export prints in a cell with nothing in it.
+_EMPTY = {"not available", "not applicable"}
+
+# A date as the export writes it: YYYY-MM-DD, then the time.
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 # A Subscribe & Save delivery's Shipping Option code.
 _SUBSCRIBE_AND_SAVE = re.compile(r"\bsns\b", re.IGNORECASE)
@@ -56,7 +65,7 @@ def detect(header: list[str], sample_rows: list[list[str]]) -> tuple[bool, str]:
 
 def _text(row: dict, key: str) -> str:
     value = (row.get(key) or "").strip()
-    return "" if value.lower() == _NOT_AVAILABLE else value
+    return "" if value.lower() in _EMPTY else value
 
 
 def _number(row: dict, key: str) -> float | None:
@@ -98,7 +107,7 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
         unit_tax = _number(row, "Unit Price Tax")
         item["tax"] = None if unit_tax is None else round(unit_tax * (quantity or 1), 2)
         ship_date = _text(row, "Ship Date")[:10]
-        item["charge_group"] = f"{order_id}/{ship_date}" if ship_date else order_id
+        item["charge_group"] = f"{order_id}/{ship_date}" if _DATE.fullmatch(ship_date) else order_id
         for key, column in (("payment_method", "Payment Method Type"), ("item_id", "ASIN"),
                             ("currency_code", "Currency"), ("status", "Order Status")):
             value = _text(row, column)
