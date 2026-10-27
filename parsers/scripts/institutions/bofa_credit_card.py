@@ -18,7 +18,7 @@ import parser_common
 import re
 from datetime import datetime
 
-from institutions import common
+from institutions import bofa_checking, common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 
@@ -179,4 +179,5 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
         "institution": "Bank of America",
         "statementDate": closing.strftime("%Y-%m-%d") if closing else "",
         "transactions": transactions,
+        "accountOwners": bofa_checking.header_owners(combined, account),
     }

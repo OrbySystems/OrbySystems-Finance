@@ -86,6 +86,44 @@ def _statement_date(combined_text: str) -> str:
         return ""
 
 
+def _section_holder(block_lines: list[str]) -> str:
+    """The name printed under an account's own heading ("Your Regular
+    Savings"), without a beneficiary ("... POD FIRST LAST") after it."""
+    for line in block_lines[1:7]:
+        line = line.strip()
+        if line.startswith("Account summary"):
+            break
+        if not bofa_checking._NAME_LINE_RE.fullmatch(line):
+            continue
+        holder = bofa_checking._BENEFICIARY_RE.split(line, maxsplit=1)[0].strip()
+        if bofa_checking._printed_name(holder):
+            return holder
+    return ""
+
+
+def _owners(text: str, accounts: list[dict]) -> list[dict]:
+    """Each account's holder.
+
+    The running page header carries only the first account's number, so the
+    others are read from the name under their own heading; when that is the
+    same person (or people) as an account already read, the name is shared,
+    which keeps a joint account's two holders.
+    """
+    owners = {}
+    for acct in accounts:
+        for owner in bofa_checking.header_owners(text, acct["account"]):
+            owners.setdefault(owner["account"], owner)
+    for acct in accounts:
+        if acct["account"] in owners or not acct.get("holder"):
+            continue
+        holder = acct["holder"]
+        shared = next((o["ownerName"] for o in owners.values()
+                       if holder == o["ownerName"].split(" & ")[0]
+                       or holder.startswith(o["ownerName"].split(" & ")[0] + " ")), holder)
+        owners[acct["account"]] = {"account": acct["account"], "ownerName": shared}
+    return list(owners.values())
+
+
 def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> dict:
     combined = "\n".join(pages_text)
     statement_date = _statement_date(combined)
@@ -118,7 +156,8 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
         for t in txns:
             t["account"] = account_number
             t["accountType"] = account_type
-        accounts.append({"account": account_number, "accountType": account_type, "transactions": txns})
+        accounts.append({"account": account_number, "accountType": account_type, "transactions": txns,
+                         "holder": _section_holder(block_lines)})
 
     all_transactions = [t for acct in accounts for t in acct["transactions"]]
 
@@ -141,4 +180,5 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
         "statementDate": statement_date,
         "transactions": all_transactions,
         "needsVisionOcr": needs_vision_ocr,
+        "accountOwners": _owners(combined, accounts),
     }

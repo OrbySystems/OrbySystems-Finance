@@ -259,9 +259,13 @@ def _parse_matched(module, pages_text: list[str], pdf_path: str, vision: dict | 
     if kind in parser_common.MULTI_TABLE_KINDS:
         result = module.parse(pages_text, pdf_path)
         parser_common.validate_multi_table_parse_result(result, module.__name__)
+        parser_common.infer_explicit_account_owner(result, pages_text)
+        parser_common.normalize_account_owners(result)
         return parser_common.normalize_currency_codes(result)
     result = module.parse(pages_text, pdf_path, vision)
     parser_common.validate_parse_result(result, module.__name__)
+    parser_common.infer_explicit_account_owner(result, pages_text)
+    parser_common.normalize_account_owners(result)
     result["tables"] = {"cash_transactions": result.pop("transactions")}
     return parser_common.normalize_currency_codes(result)
 

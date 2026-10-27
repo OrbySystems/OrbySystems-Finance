@@ -29,6 +29,87 @@ _SECTIONS = {
 _ACCOUNT_NUMBER_RE = re.compile(
     r"account\s*(?:number|#)\s*:?\s*\n*\s*([\dXx*\s]{2,25})", re.IGNORECASE
 )
+# The continuation-page header names the holder; pdfplumber reads its
+# separator as "|" in some layouts and "!" in others.
+_OWNER_HEADER_RE = re.compile(r"^([A-Z][A-Z .,'&-]+?)\s*[|!]\s*Account\s*#\s*([\dXx*\s]+?)\s*[|!]", re.M)
+
+# The older statement layout has no account number in its page header; the
+# name sits in front of the statement period instead.
+_LEGACY_OWNER_HEADER_RE = re.compile(r"^([A-Z][A-Z .,'&-]+?)\s+\d{2}-\d{2}-\d{2}\s+through\s+\d{2}-\d{2}-\d{2}\s*$", re.M)
+
+
+def _printed_name(name: str) -> bool:
+    # Scrambled or redacted statements print X's where the name was.
+    name = name.strip()
+    return len(name.split()) >= 2 and any(set(word) - {"X"} for word in name.split())
+
+
+_NAME_LINE_RE = re.compile(r"[A-Z][A-Z.'-]*(?: [A-Z][A-Z.'-]*)+")
+# A name after one of these is a beneficiary ("POD" is payable on death, "ITF"
+# in trust for), not a holder: the account is not joint.
+_BENEFICIARY_RE = re.compile(r"(?:POD|TOD|ITF|PAYABLE ON DEATH TO|TRANSFER ON DEATH TO)\b", re.I)
+
+
+def _joint_holder(text: str, first: str) -> str:
+    """A second holder printed after the first on the summary line.
+
+    A joint account's page header names only the first holder, but the
+    summary names both on one line ("FIRST LAST SECOND OTHER"). Running
+    text, phone numbers and web addresses after the name are not capitals
+    only, so they are not taken.
+    """
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith(first + " "):
+            rest = line[len(first) + 1:]
+            if (_NAME_LINE_RE.fullmatch(rest) and len(rest.split()) <= 4
+                    and not _BENEFICIARY_RE.match(rest)):
+                return rest
+    return ""
+
+
+def header_owners(text: str, account: str) -> list[dict]:
+    """The holder (or holders) named in the page header of one account's statement."""
+    if not account:
+        return []
+    for m in _OWNER_HEADER_RE.finditer(text):
+        if common.last4_digits(m.group(2)) == account and _printed_name(m.group(1)):
+            name = m.group(1).strip()
+            second = _joint_holder(text, name)
+            return [{"account": account, "ownerName": f"{name} & {second}" if second else name}]
+    return []
+
+
+def _address_block_names(text: str) -> list[str]:
+    """Holder names printed just above the street line of the mailing block."""
+    lines = [l.strip() for l in text.splitlines()]
+    for i, line in enumerate(lines):
+        if not re.match(r"\d+\s+[A-Z0-9]", line):
+            continue
+        names = []
+        j = i - 1
+        while j >= 0 and len(names) < 2 and _NAME_LINE_RE.fullmatch(lines[j]):
+            if not _BENEFICIARY_RE.match(lines[j]):
+                names.insert(0, lines[j])
+            j -= 1
+        if names and all(_printed_name(n) for n in names):
+            return names
+    return []
+
+
+def legacy_header_owners(text: str, accounts: list[str]) -> list[dict]:
+    """The holder(s) named in the older layout, for each account listed.
+
+    The mailing block names every holder, one per line; the page header,
+    when there is one, names the first only and has to agree with it.
+    """
+    header = next((m.group(1).strip() for m in _LEGACY_OWNER_HEADER_RE.finditer(text) if _printed_name(m.group(1))), "")
+    names = _address_block_names(text)
+    if names and header and names[0] != header:
+        names = []
+    name = " & ".join(names) or header
+    return [{"account": a, "ownerName": name} for a in dict.fromkeys(accounts) if a] if name else []
+
 
 # Matches e.g. "Beginning balance on April 14, 2016 $1,607.04". No
 # per-transaction balance column is printed, so this is the seed for a
@@ -265,4 +346,5 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
         "statementDate": statement_date,
         "transactions": transactions,
         "needsVisionOcr": needs_vision_ocr,
+        "accountOwners": header_owners(combined, account),
     }

@@ -273,8 +273,12 @@ def _parse_matched(module, rows: list[dict[str, str]], csv_path: str) -> dict:
     result = module.parse(rows, csv_path)
     if parser_common.module_kind(module) in parser_common.MULTI_TABLE_KINDS:
         parser_common.validate_multi_table_parse_result(result, module.__name__)
+        parser_common.infer_csv_account_owner(result, rows)
+        parser_common.normalize_account_owners(result)
         return parser_common.normalize_currency_codes(result)
     parser_common.validate_parse_result(result, module.__name__)
+    parser_common.infer_csv_account_owner(result, rows)
+    parser_common.normalize_account_owners(result)
     result["tables"] = {"cash_transactions": result.pop("transactions")}
     return parser_common.normalize_currency_codes(result)
 

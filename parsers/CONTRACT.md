@@ -94,9 +94,49 @@ Result — **exactly** these keys:
 | `transactions` | `list[dict]` | may be empty |
 | `needsVisionOcr` | `bool` | optional, default `False`; PDF only — check images could be OCR'd but no `vision` was supplied |
 | `checks` | `list[dict]` | optional — the statement's own arithmetic; see "Checks" below |
+| `accountOwners` | `list[dict]` | optional — the names printed for accounts on this statement; see "Account owners" below |
 
 There is **no** top-level `account` / `accountType` — one statement can
 cover several accounts, so they live per transaction.
+
+### Account owners
+
+`accountOwners` is available on bank and brokerage results. Each entry has
+`account` (the same last 3–4 characters used on its rows) and
+`ownerName` (the account holder or registered trust name printed on the
+statement). Emit one entry per account only when the document actually names
+its owner. Preserve joint registrations as one printed name. Do not derive an
+owner from a mailing address, payee, employer, advisor, account product title,
+or the person running OrbySystems. Omit the list when the owner cannot be read
+confidently. Names in this list are personal data and must stay in the local
+parser result; parser diagnostics and support reports must never include them.
+An entry may also include `institution` when it differs from the result's
+top-level institution, matching the row's `institution` field.
+
+The dispatcher then normalizes every name (`parser_common.normalize_account_owners`),
+so a parser reports the name as printed and does not clean it up itself:
+a person is reduced to first and last name, since middle names and initials
+are printed differently from one document to the next ("LAST, FIRST M" is
+turned around, and a suffix such as JR is dropped); a joint registration
+("A B & C D") is reduced one holder at a time; and a trust or other entity
+(TRUST, LLC, ESTATE, FBO, TTEE, and similar) keeps its printed name, minus a
+trailing agreement date such as "U/A 12/02/22" or "DTD 07/17/1995".
+
+The app keeps a user's correction separate from this statement evidence, and
+the correction wins. A later statement can update the inferred name without
+overwriting that correction.
+For single-account PDFs, the dispatcher also recognizes an explicit
+`Account holder:`, `Account owner:`, `Registered owner:`, `Participant name:`,
+`Cardmember name:`, or `Client name:` line when it contains one unambiguous
+name. Multi-account and unlabeled registrations belong in the institution
+parser.
+
+For a single-account CSV or `.xlsx` export, the dispatcher recognizes the
+same explicit holder or owner labels when they are column headers and have
+one unambiguous value.
+
+A parser delivered to an older app must omit `accountOwners` if that app's
+Go result decoder predates the field, as with any new optional contract key.
 
 Each `transactions[]` entry — **exactly**:
 
@@ -147,7 +187,7 @@ def parse(pages_text: list[str], pdf_path: str) -> dict   # no vision / needsVis
 ```
 
 Result — **exactly** `institution` (`str`), `statementDate` (`str`),
-`tables` (`dict[str, list[dict]]`), and optionally `checks` (see "Checks"
+`tables` (`dict[str, list[dict]]`), and optionally `checks` and `accountOwners` (see "Checks" and "Account owners"
 below). `tables` keys must be a subset of:
 
 - **`cash_transactions`** — identical row shape to a `KIND_BANK`

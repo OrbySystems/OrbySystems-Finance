@@ -174,8 +174,8 @@ def grid_header_and_rows(grid: list[list[str]]) -> tuple[list[str], list[list[st
 # meaningful per transaction - see _REQUIRED_TXN_KEYS below. ---
 # checks (optional, both kinds): the statement's own arithmetic, for the
 # dispatcher to evaluate - see statement_checks.py and CONTRACT.md.
-_RESULT_KEYS = {"institution", "statementDate", "transactions", "needsVisionOcr", "checks"}
-_REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks"}
+_RESULT_KEYS = {"institution", "statementDate", "transactions", "needsVisionOcr", "checks", "accountOwners"}
+_REQUIRED_RESULT_KEYS = _RESULT_KEYS - {"needsVisionOcr", "checks", "accountOwners"}
 # account/accountType are required per transaction (every transaction
 # belongs to some account, even if the parser couldn't determine its
 # number/type - in which case use ""); reference is optional - the
@@ -1516,6 +1516,130 @@ def unclassified_action(row: dict) -> str:
     return action
 
 
+def _validate_account_owners(result: dict, module_name: str) -> None:
+    owners = result.get("accountOwners", [])
+    if not isinstance(owners, list):
+        raise ValueError(f"{module_name}.parse(): accountOwners must be a list")
+    seen = set()
+    for i, owner in enumerate(owners):
+        where = f"{module_name}.parse(): accountOwners[{i}]"
+        if (not isinstance(owner, dict) or
+                not {"account", "ownerName"} <= set(owner) or
+                set(owner) - {"account", "ownerName", "institution"}):
+            raise ValueError(f"{where} must contain account, ownerName, and optional institution")
+        if not isinstance(owner["account"], str) or not owner["account"].strip():
+            raise ValueError(f"{where}.account must be a non-empty str")
+        if len(owner["account"].strip()) > 4:
+            raise ValueError(f"{where}.account must use only the last 3–4 characters")
+        if not isinstance(owner["ownerName"], str) or not owner["ownerName"].strip():
+            raise ValueError(f"{where}.ownerName must be a non-empty str")
+        if "institution" in owner and (not isinstance(owner["institution"], str) or not owner["institution"].strip()):
+            raise ValueError(f"{where}.institution must be a non-empty str")
+        if len(owner["ownerName"]) > 200:
+            raise ValueError(f"{where}.ownerName is too long")
+        identity = (owner.get("institution", result.get("institution", "")), owner["account"])
+        if identity in seen:
+            raise ValueError(f"{where}.account appears more than once")
+        seen.add(identity)
+
+
+_ENTITY_WORDS = {"TRUST", "TRUSTEE", "TRUSTEES", "LLC", "INC", "CORP", "LP", "LLP", "ESTATE",
+                 "FOUNDATION", "FAMILY", "REVOCABLE", "IRREVOCABLE", "LIVING", "PARTNERSHIP",
+                 "COMPANY", "CO", "FUND", "ASSOCIATION", "UTMA", "UGMA", "FBO", "TOD", "TTEE", "TR"}
+_NAME_SUFFIXES = {"JR", "SR", "II", "III", "IV", "MD", "DDS", "ESQ"}
+
+
+# A trust is registered with its date ("... TRUST U/A 12/02/22"); the date is
+# not part of the name and is printed in different forms.
+_TRUST_DATE_RE = re.compile(
+    r"\s+(?:U\s*/\s*[ADT](?:\s*/\s*[AD])?|UA|UAD|UTD|DTD|DATED)\b.*$|\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$", re.I)
+
+
+def normalize_owner_name(name: str) -> str:
+    """Reduce a person's printed name to first and last name.
+
+    Middle names and initials are printed differently from one document to
+    the next, so only the first and last words identify the person. Trusts
+    and other entities, and anything else with fewer than two words, keep
+    the printed name. "LAST, FIRST M" is turned around, and a joint
+    registration ("A B & C D") is reduced one holder at a time.
+    """
+    name = _TRUST_DATE_RE.sub("", re.sub(r"\s+", " ", name or "").strip())
+    parts = [p.strip() for p in re.split(r"\s+(?:&|AND)\s+", re.sub(r"\s+", " ", name or "").strip(), flags=re.I)]
+    out = []
+    for part in parts:
+        if "," in part:
+            last, _, first = part.partition(",")
+            part = f"{first.strip()} {last.strip()}"
+        words = [w for w in part.replace(".", " ").split() if w]
+        if any(w.upper().strip(",") in _ENTITY_WORDS for w in words):
+            out.append(part)
+            continue
+        while len(words) > 2 and words[-1].upper() in _NAME_SUFFIXES:
+            words.pop()
+        out.append(" ".join(words) if len(words) < 2 else f"{words[0]} {words[-1]}")
+    return " & ".join(p for p in out if p)
+
+
+def normalize_account_owners(result: dict) -> None:
+    """Apply normalize_owner_name to every owner a parser or fallback produced."""
+    for owner in result.get("accountOwners", []):
+        owner["ownerName"] = normalize_owner_name(owner["ownerName"]) or owner["ownerName"]
+
+
+_EXPLICIT_OWNER_RE = re.compile(
+    r"(?im)^\s*(?:account\s+(?:holder|owner)|registered\s+owner|"
+    r"participant\s+name|cardmember\s+name|client\s+name)\s*:\s*([^\n]+)$"
+)
+
+
+def _single_account_identity(result: dict) -> tuple[str, str] | None:
+    rows = result.get("transactions", [])
+    for table_rows in result.get("tables", {}).values():
+        rows = rows + table_rows
+    accounts = {(row.get("institution") or result.get("institution", ""), row["account"])
+                for row in rows if row.get("account")}
+    return next(iter(accounts)) if len(accounts) == 1 else None
+
+
+def _set_single_account_owner(result: dict, names: set[str]) -> None:
+    if result.get("accountOwners") or len(names) != 1:
+        return
+    identity = _single_account_identity(result)
+    if identity is None:
+        return
+    name = next(iter(names))
+    words = name.split()
+    if len(words) < 2 or len(name) > 200 or any(set(word.upper()) <= {"X", "*", "#"} for word in words):
+        return
+    institution, account = identity
+    owner = {"account": account, "ownerName": name}
+    if institution and institution != result.get("institution", ""):
+        owner["institution"] = institution
+    result["accountOwners"] = [owner]
+
+
+def infer_explicit_account_owner(result: dict, pages_text: list[str]) -> None:
+    """Fill one account's owner from an explicitly labelled PDF field.
+
+    This fallback is deliberately narrow. Multi-account registrations need
+    the institution parser to attribute each name to its own account.
+    """
+    names = {match.group(1).strip() for page in pages_text
+             for match in _EXPLICIT_OWNER_RE.finditer(page)}
+    _set_single_account_owner(result, names)
+
+
+def infer_csv_account_owner(result: dict, rows: list[dict[str, str]]) -> None:
+    """Read one unambiguous owner from an explicitly named export column."""
+    labels = {"account owner", "account holder", "registered owner",
+              "participant name", "cardmember name", "client name"}
+    names = {value.strip() for row in rows for key, value in row.items()
+             if key.strip().lower().replace("_", " ") in labels
+             and isinstance(value, str) and value.strip()}
+    _set_single_account_owner(result, names)
+
+
 def validate_parse_result(result: dict, module_name: str) -> None:
     """Raises ValueError with a specific, plugin-author-facing message if
     result doesn't exactly match the parse() contract documented at the
@@ -1542,6 +1666,7 @@ def validate_parse_result(result: dict, module_name: str) -> None:
         raise ValueError(f"{module_name}.parse(): statementDate must be YYYY-MM-DD or '', got {result['statementDate']!r}")
     if "needsVisionOcr" in result and not isinstance(result["needsVisionOcr"], bool):
         raise ValueError(f"{module_name}.parse(): needsVisionOcr must be a bool")
+    _validate_account_owners(result, module_name)
     txns = result["transactions"]
     if not isinstance(txns, list):
         raise ValueError(f"{module_name}.parse(): 'transactions' must be a list")
@@ -1678,7 +1803,7 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
     """
     if not isinstance(result, dict):
         raise ValueError(f"{module_name}.parse() must return a dict, got {type(result).__name__}")
-    extra = set(result) - _MULTI_RESULT_KEYS - {"checks"}
+    extra = set(result) - _MULTI_RESULT_KEYS - {"checks", "accountOwners"}
     if extra:
         raise ValueError(f"{module_name}.parse() returned unexpected top-level key(s): {sorted(extra)}")
     missing = _MULTI_RESULT_KEYS - set(result)
@@ -1689,6 +1814,7 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
             raise ValueError(f"{module_name}.parse(): {key!r} must be a str")
     if result["statementDate"] and not _DATE_RE.match(result["statementDate"]):
         raise ValueError(f"{module_name}.parse(): statementDate must be YYYY-MM-DD or '', got {result['statementDate']!r}")
+    _validate_account_owners(result, module_name)
     tables = result["tables"]
     if not isinstance(tables, dict):
         raise ValueError(f"{module_name}.parse(): 'tables' must be a dict")

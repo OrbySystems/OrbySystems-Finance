@@ -473,6 +473,7 @@ def test_bofa_checking_with_check_images(run_statement):
     assert stmt.first_account == "9041"
     assert stmt.first_account_type == "Checking"
     assert stmt.statement_date == "2016-05-12"
+    assert stmt.raw.get("accountOwners") == [{"account": "9041", "ownerName": "MARILYN MOSBY"}]
 
     want_checks = {
         "CHECK #1409": -65, "CHECK #1439": -314, "CHECK #1440": -307,
@@ -494,6 +495,7 @@ def test_bofa_checking_with_check_images(run_statement):
 def test_bofa_checking_with_check_images_layout_b(run_statement):
     stmt = run_statement("bofa-stmt-checks-synthetic-sample.pdf")
     assert stmt.institution == "Bank of America"
+    assert stmt.raw.get("accountOwners") == [{"account": stmt.first_account, "ownerName": "JONATHAN DOE"}]
     assert stmt.first_account_type == "Checking"
     assert stmt.statement_date == "2025-01-23"
 
