@@ -504,7 +504,7 @@ and closing balance, a running balance down the rows. **Report them as
 
 | Check | Keys | Holds when |
 |---|---|---|
-| `sum` | `label`, `table`, `rows`, `expected` | the rows' amounts add up to `expected` |
+| `sum` | `label`, `table`, `rows`, `expected`, `field` (optional) | the rows' amounts add up to `expected`; `field` names another numeric column to add up instead, e.g. `current_value` for a holdings block's printed total (reported only: such a check is never explained or adjusted) |
 | `balance` | `label`, `table`, `rows`, `opening`, `closing` | `opening` + the rows' amounts = `closing` |
 | `running` | `label`, `table`, `rows`, `opening` (optional) | each row's `balance` = the previous row's (or `opening`) + its `amount` |
 | `unread` | `label`, `lines` (`[{page, line, text}]`) | there are no lines: a line inside a transaction section that looked like a row but could not be read |
@@ -518,15 +518,19 @@ it is shown to the user on their own machine and never leaves it.
 The dispatcher evaluates the checks against the rows (`scripts/statement_checks.py`)
 and prints `checkResults`. When every check holds, the import is clean,
 and one clean import of a real statement is what makes a provisional
-parser verified. A failed check does not fail the parse. OrbySystems holds
-the import and asks the user, using an explanation worked out from the
-numbers: a section read with its sign reversed, one row with its sign
-reversed, a row that should not count, lines that were not read, or
-nothing found. The answers come back as `--adjust`, the parse runs again
-with them, and the checks are evaluated again. `chase_credit_card.py` is
-the worked example. Older parsers that still raise on a mismatch work
-as before: the import fails with a diagnostic, and no questions are
-asked.
+parser verified. A failed check does not fail the parse, and it does not
+hold the import: OrbySystems imports every row the parser read and marks
+the source *partial*, recording each failed check (its label and the two
+figures) on the project's Data Checks page, where the user can re-import
+the file or review it. The review explains the gap from the numbers: a
+section read with its sign reversed, one row with its sign reversed, a row
+that should not count, lines that were not read, or nothing found. The
+user's answers come back as `--adjust`, the parse runs again with them, and
+the checks are evaluated again. `chase_credit_card.py` is the worked
+example. So **report every disagreement as a check instead of raising**:
+a statement is only refused when its structure is missing (no account, no
+period, nothing readable). Older parsers that still raise on a mismatch work
+as before: the import fails with a diagnostic, and nothing is imported.
 
 The dispatcher also prints `parser` (`id`, `tier`, `bundled`): which
 parser read the statement and its support tier.

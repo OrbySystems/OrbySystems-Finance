@@ -79,6 +79,17 @@ class TestEvaluate:
         r = one(sc.evaluate([self.check(expected=-20.0)], self.tables))
         assert r["ok"] and r["parsed"] == -20.0 and r["expected"] == -20.0 and r["rowCount"] == 2
 
+    def test_a_sum_over_another_column_is_reported_but_not_explained(self):
+        holdings = {"brokerage_holdings": [{"current_value": 100.0}, {"current_value": 50.0}]}
+        check = {"kind": "sum", "label": "Equities", "table": "brokerage_holdings", "rows": [0, 1], "field": "current_value"}
+        sc.validate_checks([{**check, "expected": 150.0}], holdings, "p")
+        assert one(sc.evaluate([{**check, "expected": 150.0}], holdings))["ok"]
+        r = one(sc.evaluate([{**check, "expected": 175.0}], holdings))
+        assert not r["ok"] and (r["parsed"], r["expected"]) == (150.0, 175.0)
+        assert r["explanation"]["kind"] == "none"
+        with pytest.raises(ValueError, match="field"):
+            sc.validate_checks([{**check, "expected": 1.0, "field": ""}], holdings, "p")
+
     def test_cents_of_rounding_are_not_a_failure(self):
         assert one(sc.evaluate([self.check(expected=-20.004)], self.tables))["ok"]
 

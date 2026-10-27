@@ -26,8 +26,13 @@ which carries no text, dates or amounts.
 
 Check shapes (keys are required unless marked optional):
 
-  {"kind": "sum", "label": str, "table": str, "rows": [int], "expected": number}
-      the rows' amounts add up to a figure the statement prints
+  {"kind": "sum", "label": str, "table": str, "rows": [int], "expected": number,
+   "field": str (optional, default "amount")}
+      the rows' amounts add up to a figure the statement prints. field names
+      another numeric column to add up instead, e.g. "current_value" for a
+      holdings block whose total the statement prints; such a check is
+      reported, never explained or adjusted, since a holding has no sign to
+      flip
   {"kind": "balance", "label": str, "table": str, "rows": [int],
    "opening": number, "closing": number}
       the opening balance plus the rows' amounts is the closing balance
@@ -74,12 +79,12 @@ def validate_checks(checks, tables: dict, module_name: str) -> None:
         if not isinstance(c.get("label"), str) or not c["label"].strip():
             raise ValueError(f"{where}['label'] must be a non-empty str")
         allowed = {
-            "sum": {"kind", "label", "table", "rows", "expected"},
+            "sum": {"kind", "label", "table", "rows", "expected", "field"},
             "balance": {"kind", "label", "table", "rows", "opening", "closing"},
             "running": {"kind", "label", "table", "rows", "opening"},
             "unread": {"kind", "label", "lines"},
         }[kind]
-        required = allowed - {"opening"} if kind == "running" else allowed
+        required = allowed - {"opening"} if kind == "running" else allowed - {"field"} if kind == "sum" else allowed
         extra, missing = set(c) - allowed, required - set(c)
         if extra:
             raise ValueError(f"{where} has unexpected key(s): {sorted(extra)}")
@@ -102,6 +107,8 @@ def validate_checks(checks, tables: dict, module_name: str) -> None:
             raise ValueError(f"{where}['rows'] must be a list of row indices")
         if any(r < 0 or r >= len(tables[table]) for r in rows) or len(set(rows)) != len(rows):
             raise ValueError(f"{where}['rows'] must index {table!r}'s rows, each once")
+        if "field" in c and (not isinstance(c["field"], str) or not c["field"].strip()):
+            raise ValueError(f"{where}['field'] must be a column name")
         for key in ("expected", "opening", "closing"):
             if key in c and not (_is_number(c[key]) or (key == "opening" and kind == "running" and c[key] is None)):
                 raise ValueError(f"{where}[{key!r}] must be a number")
@@ -229,14 +236,15 @@ def evaluate(checks: list[dict], tables: dict, statement_date: str = "") -> list
                                        "suggested": line["suggested"]} for line in mine]})
             continue
         rows = section_rows(c)
-        amounts = [float(r.get("amount") or 0) for r in rows]
+        field = c.get("field", "amount")
+        amounts = [float(r.get(field) or 0) for r in rows]
         if c["kind"] in ("sum", "balance"):
             if c["kind"] == "sum":
                 parsed, expected = round(sum(amounts), 2), round(c["expected"], 2)
             else:
                 parsed, expected = round(c["opening"] + sum(amounts), 2), round(c["closing"], 2)
             ok = _close(parsed, expected, len(amounts))
-            explanation = ({"kind": "none", "rows": [], "lines": []} if ok
+            explanation = ({"kind": "none", "rows": [], "lines": []} if ok or field != "amount"
                            else _explain(expected - parsed, amounts, list(c["rows"]), unread))
             results.append({**base, "ok": ok, "rowCount": len(rows), "parsed": parsed, "expected": expected,
                             "explanation": explanation})
