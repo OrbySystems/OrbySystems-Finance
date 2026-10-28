@@ -15,7 +15,10 @@ What the file is like, checked against a real export by counting rows:
   * A return (its Return Authorization ID) has one row per unit sent back
     (Contract Unit ID), and often several rows per unit. The rows of one
     unit can print different amounts, so a return's amount is the largest
-    each of its units printed, added up, and it is only a guide.
+    each of its units printed, added up, and it is only a guide. A unit is
+    numbered within its contract (Contract ID): a return of two items can
+    hold two contracts, each with a unit "1" and its own amount (17 returns
+    of 146 in a real export).
   * It names the order, never the item: no product name or item number.
   * Return Creation Date is "Not Applicable" on some returns; Date of
     Return, always a date, stands in for it then.
@@ -24,6 +27,13 @@ What the file is like, checked against a real export by counting rows:
   * Where Amazon refunded before the item came back and it never did, the
     row says Retrocharge Resolution "AdvancedRefund" and Charge Status
     "ChargeSuccess": the customer was charged again.
+  * Some returns print "Not Applicable" for their Return Authorization ID
+    (28 rows of 309 in a real export, for 26 orders over 13 years, nearly
+    all refunded). Their rows are one return per order, numbered
+    "order:<Order ID>" so a later export updates it rather than adding
+    another: their Date of Return can't tell returns apart, since the rows
+    of one numbered return print different days in about one return in
+    ten, and a refund names only the order anyway.
 """
 
 from collections import Counter
@@ -40,6 +50,10 @@ _REQUIRED_HEADER = {
 }
 
 _NOT_AVAILABLE = ("not available", "not applicable")
+
+# A return printed without its number is given this prefix and its order
+# number: one per order (see the docstring). No Amazon number has it.
+_ORDER_RETURN = "order:"
 
 _STATES = {"closed": "closed", "expired": "expired"}
 
@@ -77,8 +91,9 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
     rows = [{(k or "").strip().lstrip("﻿"): v for k, v in row.items()} for row in rows]
     by_return: dict[str, list[dict]] = {}
     for row in rows:
-        return_id = _text(row, "Return Authorization ID")
-        if return_id and _text(row, "Order ID"):
+        order_id = _text(row, "Order ID")
+        if order_id:
+            return_id = _text(row, "Return Authorization ID") or _ORDER_RETURN + order_id
             by_return.setdefault(return_id, []).append(row)
 
     returns = []
@@ -88,11 +103,13 @@ def parse(rows: list[dict[str, str]], csv_path: str) -> dict:
         date = (created or sent or [""])[0]
         if not date:
             continue
-        units: dict[str, float] = {}
+        # A unit is numbered within its contract, and an order's returns
+        # printed without a number can hold several contracts.
+        units: dict[tuple[str, str], float] = {}
         for r in group:
             amount = _number(r, "Return Amount")
             if amount is not None:
-                unit = _text(r, "Contract Unit ID") or str(len(units))
+                unit = (_text(r, "Contract ID"), _text(r, "Contract Unit ID") or str(len(units)))
                 units[unit] = max(units.get(unit, 0.0), abs(amount))
         states = {_STATES.get(_text(r, "Return Receivable State").lower(), "open") for r in group}
         state = "closed" if "closed" in states else "expired" if "expired" in states else "open"

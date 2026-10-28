@@ -473,7 +473,7 @@ its order yet is a refund still to come. A `KIND_RETAIL` module may return
 |---|---|---|
 | `date` | `str` | `YYYY-MM-DD`, the day the return was started |
 | `order_id` | `str` | the order the return is for |
-| `return_id` | `str` | the retailer's return number; one row each |
+| `return_id` | `str` | the retailer's return number; one row each. Where the retailer prints none, one made the same way in every export, so a later import updates the row, and that no real number can match (Amazon's: `order:<order_id>`) |
 | `amount` | number or `null` | optional. What the return is for, positive. A guide only: it is not money |
 | `currency_code`, `reason` | `str` | optional, as printed |
 | `resolution` | `str` | optional. `"refund"` or `"exchange"`: what the customer asked for |
