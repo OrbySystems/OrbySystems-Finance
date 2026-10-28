@@ -1221,7 +1221,9 @@ _RETAIL_ITEM_OPTIONAL_KEYS = {
 _RETAIL_ITEM_KEYS = _RETAIL_ITEM_REQUIRED_KEYS | _RETAIL_ITEM_OPTIONAL_KEYS
 
 # A return the customer started with a retailer, one row per return (the
-# retailer's return number), in the retail_returns table. It is no money:
+# retailer's return number, or, where it prints none, one made the same way
+# in every export that no real number can match), in the retail_returns
+# table. It is no money:
 # the money back, when it comes, is a refund row in retail_items with the
 # same order_id. A return without one yet is a refund still to come.
 # resolution is what the customer asked for (refund or exchange); state is

@@ -15,7 +15,9 @@ def _returns(run_statement):
 
 
 def test_one_row_per_return(run_statement):
-    assert sorted(_returns(run_statement)) == ["RSAMPLE0002", "RSAMPLE0003", "RSAMPLE0006", "RSAMPLE0007", "RSAMPLE0008"]
+    assert sorted(_returns(run_statement)) == [
+        "RSAMPLE0002", "RSAMPLE0003", "RSAMPLE0006", "RSAMPLE0007", "RSAMPLE0008",
+        "order:111-0000001-0000001", "order:111-0000003-0000003"]
 
 
 def test_a_return_names_its_order_and_when_it_started(run_statement):
@@ -39,6 +41,18 @@ def test_an_item_never_sent_back_after_an_advance_refund_was_charged_again(run_s
 def test_an_exchange_without_a_creation_date_is_dated_when_it_was_sent(run_statement):
     r = _returns(run_statement)["RSAMPLE0008"]
     assert r["resolution"] == "exchange" and r["date"] == "2026-06-15"
+
+
+def test_a_return_printed_without_its_number_is_one_per_order(run_statement):
+    returns = _returns(run_statement)
+    r = returns["order:111-0000001-0000001"]
+    assert r["order_id"] == "111-0000001-0000001" and r["date"] == "2026-03-05" and r["returned_on"] == "2026-03-07"
+    assert r["state"] == "closed" and r["resolution"] == "refund"
+    # Two contracts' unit "U1"s are two items, both counted.
+    assert approx(r["amount"], 19.75)
+    # Beside a numbered return of the same order, it stays a return of its own.
+    assert approx(returns["order:111-0000003-0000003"]["amount"], 3.10)
+    assert approx(returns["RSAMPLE0003"]["amount"], 14.30)
 
 
 def test_every_return_names_an_order_that_was_bought(run_statement):
