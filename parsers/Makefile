@@ -2,6 +2,10 @@
 
 VENV ?= .venv
 PYTHON ?= python3
+# The minor version of PYTHON. The venv is built for it, so a different
+# PYTHON (a CI matrix entry, or OrbySystems pinning the 3.12 its app runs
+# parsers on) rebuilds the venv rather than reusing one made from another.
+PYVER := $(shell $(PYTHON) -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>/dev/null)
 ifeq ($(OS),Windows_NT)
 PY   := $(VENV)/Scripts/python.exe
 else
@@ -14,10 +18,11 @@ PIP  := "$(PY)" -m pip
 test: venv
 	"$(PY)" -m pytest
 
-venv: $(VENV)/.stamp
+venv: $(VENV)/.stamp-$(PYVER)
 
-$(VENV)/.stamp: requirements-test.txt
-	$(PYTHON) -m venv "$(VENV)"
+$(VENV)/.stamp-$(PYVER): requirements-test.txt
+	@test -n "$(PYVER)" || { echo "$(PYTHON) is not a Python interpreter: run make PYTHON=<python3.x>" >&2; exit 1; }
+	$(PYTHON) -m venv --clear "$(VENV)"
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements-test.txt
 	"$(PY)" -c "from pathlib import Path; import sys; Path(sys.argv[1]).touch()" "$@"
