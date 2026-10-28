@@ -15,7 +15,20 @@ a late fee of up to $41 Credits -$25.00"). The transaction table groups rows int
 sections - Payments, Credits and Adjustments; Standard Purchases (a
 cardholder's name can head their own); Fees Charged; Interest Charged -
 the last two closing on a printed total. Citi leaves the transaction date
-blank on some payments, so a row can start with one date or two.
+blank on some payments, so a row can start with one date or two. On a
+Costco card the rewards summary prints in a column beside the table, so a
+row, a section's heading or total, or the table's header can run on into
+one of its lines: words and figures that are not money ("Your 2026 reward
+will follow"), or a line of its ledger ("... $15.00 and EV charging ......
++$0.60", "certificate amount ...... -$12.40"). A row's amount is never
+taken from that text. A row level with any other figure ("$45.00 Year to
+Date : $31.40") is read by its own amount, the first on its line, and a
+charge printed in capitals with no date in Fees Charged or Interest
+Charged by its own, dated the closing date. Such tentative readings are
+kept only when each is in at least one of the statement's checks and every
+check over any of them holds; else all are held for review, as lines not
+read. A statement can cover two cards, the primary cardholder's and an
+authorized user's, each heading its own sections; they are one account.
 
 Citi prints charges as positive and payments/credits as negative. A
 monthly statement is read in those printed signs and checked against its
@@ -34,13 +47,14 @@ import re
 from datetime import datetime
 
 import parser_common
+import statement_checks
 
 from institutions import common
 
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
 INSTITUTION = "Citi"
-PARSER_REVISION = 4
+PARSER_REVISION = 8
 DIAGNOSTIC_MARKERS = {
     "account_summary": "Account Summary",
     "transaction_table": "date description amount",
@@ -93,38 +107,81 @@ _SUMMARY_RES = {
     for label in _SUMMARY_CREDITS + _SUMMARY_DEBITS
 }
 
-# The transaction table's header: "Sale / Post" over the Costco card's
-# dates, "Trans. / Post" over other cards'.
-_TABLE_START_RE = re.compile(r"^(?:Sale|Trans\.?)\s+Post\s*$", re.IGNORECASE)
-# Where it ends: the year-to-date totals some cards print after it, or the
-# interest table.
+# Where the table ends: the year-to-date totals some cards print after it,
+# or the interest table.
 _TABLE_END_RE = re.compile(r"^(?:Interest charge calculation|\d{4}\s+totals\s+year-to-date)\b", re.IGNORECASE)
+# The column beside the table (the rewards summary on a Costco card's later
+# page) can run on into the line a row, a heading or a total is on. What
+# runs on is text with nothing shaped like money - words, and figures that
+# are not money, a year, a count, a percentage ("Your 2026 reward will
+# follow", "4% on eligible gas") - or a line of the summary's ledger, its
+# figure after a dot leader and signed before the dollar ("4% on eligible
+# gas ...... +$1.80"). A row's own amount is never printed with a "+", so
+# that figure is never taken for it; a ledger line can print one signed
+# "-" too ("certificate amount ...... -$12.40"), after its dot leader. A
+# column line with any other figure ("Year to Date : $31.40") makes the row
+# a tentative reading (_TENTATIVE_ROW_RE). Through revision 5 the row's
+# amount was taken from that figure instead, and a tester's purchases check
+# failed with nothing to show why (27 Oct 2026).
+_BESIDE_TEXT = r"\s+(?!\d\.\d)[A-Za-z0-9](?:(?!\d\.\d|\$)[^\n])*?"
+_BESIDE = r"(?:" + _BESIDE_TEXT + r"(?:\.{3,}\s*[+-]\$[\d,]+\.\d{2})?)?"
+# The transaction table's header: "Sale / Post" over the Costco card's
+# dates, "Trans. / Post" over other cards'. What the column beside it runs
+# on into it, a "$" figure included, is left aside: the header holds none.
+_TABLE_START_RE = re.compile(r"^(?:Sale|Trans\.?)\s+Post\b", re.IGNORECASE)
 # Its sections. Purchases can be headed with their kind ("Standard
-# Purchases").
-_SECTION_RE = re.compile(
-    r"^(?P<name>Payments, Credits and Adjustments|(?:[A-Za-z]+\s+)?Purchases|Balance Transfers|"
-    r"Cash Advances|Fees Charged|Interest Charged)\s*$",
-    re.IGNORECASE,
-)
+# Purchases"), and run on into the column beside the table like a row. A
+# heading printed as Citi prints it, in title case, takes anything after
+# it, a column line's "$" figure included; any other casing takes only what
+# holds no money, so a charge that starts with a heading's words, printed
+# in capitals ("INTEREST CHARGED TO STANDARD PURCH $4.20"), is never a
+# heading. The ledger's own line "purchases ...... +$5.70" (the end of "2%
+# on Costco and Costco.com purchases") is none either.
+_SECTION_NAMES = (r"Payments, Credits and Adjustments|(?:[A-Za-z]+\s+)?Purchases|Balance Transfers|"
+                  r"Cash Advances|Fees Charged|Interest Charged")
+_SECTION_RE = re.compile(r"^(?P<name>" + _SECTION_NAMES + r")" + _BESIDE + r"\s*$", re.IGNORECASE)
+_TITLE_SECTION_RE = re.compile(
+    r"^(?P<name>Payments, Credits and Adjustments|(?:[A-Z][a-z]+\s+)?Purchases|Balance Transfers|"
+    r"Cash Advances|Fees Charged|Interest Charged)\s+\S")
 # A section's printed total: "TOTAL FEES FOR THIS PERIOD $0.00", "Total
 # interest charged in this billing period $1.23". Not the year-to-date
-# block's "Total fees charged in 2026", which ends the table.
+# block's "Total fees charged in 2026", which ends the table. Its own figure
+# comes first; what the column beside it runs on into it is left aside, a
+# total misread there only failing its check.
 _SECTION_TOTAL_RE = re.compile(
     r"^Total\s+(?P<what>fees|interest)\b(?:\s+charged)?\s+(?:for|in)\s+this\s+(?:billing\s+)?period\s+"
-    r"(?P<sign>-)?\$?(?P<num>[\d,]+\.\d{2})\s*$",
+    r"(?P<sign>-)?\$?(?P<num>[\d,]+\.\d{2})(?:\s+\S.*)?$",
     re.IGNORECASE,
 )
-# A row can run on into the column beside the table (the rewards summary on
-# a Costco card's later page): words after its amount, with no figure in
-# them. A column line that has one leaves the row unread, held for review.
-_BESIDE = r"(?:\s+[A-Za-z][^\d$]*)?"
+# A row's description holds no "$" amount: the row's own amount is the first
+# one on its line, never one further along in the column's text. Nor does it
+# end in a column label's colon or a dot leader: a dated line whose only
+# figure is the column's ("... CITY CA Year to Date : $31.40") is no row.
+_DESCRIPTION = r"((?:(?!-?\$[\d,]+\.\d{2}).)+?)(?<!:)(?<!\.\.)"
 _TWO_DATE_ROW_RE = re.compile(
-    r"^(\d{2}/\d{2})\s+\d{2}/\d{2}\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE + r"\s*$"
+    r"^(\d{2}/\d{2})\s+\d{2}/\d{2}\s+" + _DESCRIPTION + r"\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE + r"\s*$"
 )
 # Citi leaves Sale Date blank for some payments, so pdfplumber emits only
 # the Post Date at the start of the row.
-_ONE_DATE_ROW_RE = re.compile(r"^(\d{2}/\d{2})\s+(.+?)\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE + r"\s*$")
-# Starts like a row; reported as not read when neither row form takes it.
+_ONE_DATE_ROW_RE = re.compile(r"^(\d{2}/\d{2})\s+" + _DESCRIPTION + r"\s+(-?\$?[\d,]+\.\d{2})" + _BESIDE
+                              + r"\s*$")
+# A row level with a column line that has a "$" figure of its own ("08/21
+# 08/21 STORE $45.00 Year to Date : $31.40"): its own amount is the first
+# on the line, Citi printing every row's with "$". Read only tentatively.
+_TENTATIVE_ROW_RE = re.compile(r"^(\d{2}/\d{2})\s+(?:\d{2}/\d{2}\s+)?" + _DESCRIPTION
+                               + r"\s+(-?\$[\d,]+\.\d{2})\s+\S.*$")
+# A charge printed with no date in the Fees Charged or Interest Charged
+# section ("INTEREST CHARGED TO STANDARD PURCH $4.20"), in capitals as Citi
+# prints its charges: no row form takes it, so it is read only tentatively,
+# a line of the rewards ledger beside it left aside ("LATE FEE $41.00 4% on
+# eligible gas ...... +$1.80"). Never a total, nor a line of the column
+# beside the section, in mixed case or ending in a colon: "certificate
+# amount ...... -$12.40", which revision 6 took for one, or "Year to Date :
+# $31.40", which revision 7 did.
+_UNDATED_CHARGE_RE = re.compile(r"^(?!TOTAL\b)(?P<desc>[A-Z](?:(?!\.\.)[A-Z0-9 &'/#*.,-])*?)\s"
+                                r"(?P<amount>-?\$[\d,]+\.\d{2})" + _BESIDE + r"\s*$")
+# Starts like a row; reported as not read when no row form, tentative or
+# not, takes it.
 _DATED_RE = re.compile(r"^\d{2}/\d{2}\b")
 # Starts with a date and ends with an amount, anywhere in the statement:
 # outside the table, a row nothing claimed.
@@ -228,7 +285,9 @@ def _read_table(pages_text: list[str], closing: datetime):
     """The transaction table: its rows in statement order, each row's
     section, each section's printed total, the sections in order, and the
     lines that looked like rows but were not read, by section (page and
-    line numbers 1-based). found says whether the table was there at all."""
+    line numbers 1-based). found says whether the table was there at all.
+    A tentative reading's row carries its line as "held"; _parse_monthly
+    keeps it or reports the line."""
     rows: list[dict] = []
     sections: list[str | None] = []
     totals: dict[str, float] = {}
@@ -253,10 +312,12 @@ def _read_table(pages_text: list[str], closing: datetime):
                 in_table, section = False, None
                 continue
             if not in_table:
-                if _ROWLIKE_RE.match(line):
+                # A row the column beside it ran on into ends in words.
+                if (_ROWLIKE_RE.match(line) or _TWO_DATE_ROW_RE.match(line) or _ONE_DATE_ROW_RE.match(line)
+                        or _TENTATIVE_ROW_RE.match(line)):
                     not_read(page_no, line_no, line)
                 continue
-            heading = _SECTION_RE.match(line)
+            heading = _SECTION_RE.match(line) or _TITLE_SECTION_RE.match(line)
             if heading:
                 section = _section_label(heading.group("name"))
                 if section not in order:
@@ -270,8 +331,15 @@ def _read_table(pages_text: list[str], closing: datetime):
                 if label not in order:
                     order.append(label)
                 continue
+            held = None
             match = _TWO_DATE_ROW_RE.match(line) or _ONE_DATE_ROW_RE.match(line)
+            if not match and _DATED_RE.match(line):
+                match = _TENTATIVE_ROW_RE.match(line)
+                held = {"page": page_no, "line": line_no, "text": line}
             date = _transaction_date(match.group(1), closing) if match else None
+            charge = None
+            if not match and section in ("Fees Charged", "Interest Charged"):
+                charge = _UNDATED_CHARGE_RE.match(line)
             if date:
                 # Summary and year-to-date total rows have an amount but no
                 # leading MM/DD date, so only actual activity reaches here.
@@ -279,8 +347,15 @@ def _read_table(pages_text: list[str], closing: datetime):
                     "date": date,
                     "description": re.sub(r"\s+", " ", match.group(2)).strip(),
                     "amount": common.parse_amount(match.group(3)),
-                    "balance": None,
-                    "reference": "",
+                    "held": held,
+                })
+                sections.append(section)
+            elif charge:
+                rows.append({
+                    "date": closing.strftime("%Y-%m-%d"),
+                    "description": re.sub(r"\s+", " ", charge.group("desc")).strip(),
+                    "amount": common.parse_amount(charge.group("amount")),
+                    "held": {"page": page_no, "line": line_no, "text": line},
                 })
                 sections.append(section)
             elif _DATED_RE.match(line):
@@ -419,21 +494,54 @@ def _parse_monthly(pages_text: list[str]) -> dict:
             stage="activity",
         )
 
+    summary = _summary(pages_text)
+    account_match = _ACCOUNT_RE.search(combined)
+    account = account_match.group(1) if account_match else ""
+    statement_date = closing.strftime("%Y-%m-%d")
+    transactions, checks = _assemble(rows, row_sections, totals, order, unread, summary, account)
+    if any(row["held"] for row in rows):
+        # The tentative readings stay only when each is in at least one sum or
+        # balance check and every check over any of them holds; else they are
+        # all held for review, as lines not read. A reading no check covers is
+        # confirmed by nothing (a summary that didn't read).
+        results = statement_checks.evaluate(checks, {"cash_transactions": transactions}, statement_date)
+        held = {i for i, t in enumerate(transactions) if t["held"]}
+        covering = [(set(c["rows"]), r["ok"]) for r, c in zip(results, checks) if c["kind"] in ("sum", "balance")]
+        covered = set().union(*(rows_ for rows_, _ in covering)) if covering else set()
+        if held - covered or any(not ok and held & rows_ for rows_, ok in covering):
+            for row, section in zip(rows, row_sections):
+                if row["held"]:
+                    unread.setdefault(section or _OUTSIDE, []).append(row["held"])
+            for lines in unread.values():
+                lines.sort(key=lambda line: (line["page"], line["line"]))
+            kept = [i for i, row in enumerate(rows) if not row["held"]]
+            transactions, checks = _assemble([rows[i] for i in kept], [row_sections[i] for i in kept],
+                                             totals, order, unread, summary, account)
+    for t in transactions:
+        del t["held"]
+
+    return {
+        "institution": INSTITUTION,
+        "statementDate": statement_date,
+        "transactions": transactions,
+        "checks": checks,
+    }
+
+
+def _assemble(rows: list[dict], row_sections: list[str | None], totals: dict[str, float], order: list[str],
+              unread: dict[str, list[dict]], summary: dict[str, float], account: str) -> tuple[list[dict], list[dict]]:
+    """The output rows, fresh copies of rows, and the checks over them."""
     # Date order, statement order within a day: the latest row carries the
     # New balance, which is what reading an account's latest balance takes
     # as its current one.
     credit = [_is_credit(section, row["amount"]) for section, row in zip(row_sections, rows)]
     ordered = sorted(range(len(rows)), key=lambda i: (rows[i]["date"], i))
-    transactions = [rows[i] for i in ordered]
+    transactions = [{**rows[i], "balance": None, "reference": ""} for i in ordered]
     sections = [row_sections[i] for i in ordered]
     credit = [credit[i] for i in ordered]
 
-    summary = _summary(pages_text)
     common.apply_running_balance(transactions, summary.get("Previous balance"))
     common.negate_amounts_and_balances(transactions)
-
-    account_match = _ACCOUNT_RE.search(combined)
-    account = account_match.group(1) if account_match else ""
     common.tag_account(transactions, account, "Credit Card")
 
     # The statement's own figures, negated like the rows (statement_checks).
@@ -458,13 +566,7 @@ def _parse_monthly(pages_text: list[str]) -> dict:
                        "closing": round(-summary["New balance"], 2)})
     for label, lines in unread.items():
         checks.append({"kind": "unread", "label": label, "lines": lines})
-
-    return {
-        "institution": INSTITUTION,
-        "statementDate": closing.strftime("%Y-%m-%d"),
-        "transactions": transactions,
-        "checks": checks,
-    }
+    return transactions, checks
 
 
 # Characters pdfminer measures as smaller than a point but that are wider

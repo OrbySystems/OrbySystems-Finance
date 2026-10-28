@@ -9,6 +9,7 @@ LINE_H = 13
 OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-costco-synthetic-sample.pdf"
 ANNUAL_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-annual-synthetic-sample.pdf"
 SMALL_LABELS_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-costco-small-labels-synthetic-sample.pdf"
+REWARDS_COLUMN_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "citi-costco-rewards-column-synthetic-sample.pdf"
 
 
 def escape(value: str) -> bytes:
@@ -137,6 +138,35 @@ SMALL_LABELS_OUT.write_bytes(build_runs_pdf([
     [(40, top - LINE_H * n, FONT_SIZE, 100, line) for n, line in enumerate(pages[1])],
 ]))
 print(SMALL_LABELS_OUT)
+
+# The same statement with the rewards summary Costco cards print in a column
+# beside the transaction table. A line of the column level with a row, or
+# with a section's heading, is read as part of it: words alone, or a line of
+# the summary's ledger with its own figure after a dot leader.
+REWARDS_X = 330
+beside = {
+    "Date Date Description Amount": "Costco Cash Back Rewards Summary",
+    "09/10 AUTOPAY 260807000000000RAUTOPAY AUTO-PMT -$300.00": "last statement ............ +$12.40",
+    "Standard Purchases": "Earned this period ........ +$8.10",
+    "08/21 08/21 SAMPLE FERRY TERMINAL WA $45.00": "4% on eligible gas ........ +$1.80",
+    "08/24 08/24 SAMPLE EV CHARGING CA $15.00": "and EV charging ........... +$0.60",
+    "08/30 08/30 WWW COSTCO COM WA $100.00": "Total Costco Cash Back Rewards Balance",
+}
+rewards_page = []
+for n, line in enumerate(pages[1]):
+    y = top - LINE_H * n
+    rewards_page.append((40, y, FONT_SIZE, 100, line))
+    if line in beside:
+        rewards_page.append((REWARDS_X, y, FONT_SIZE, 100, beside[line]))
+    if line == "Payments, Credits and Adjustments":
+        # A ledger line of the column's own, between rows: it starts with its
+        # dot leader's word, never a section's heading.
+        rewards_page.append((REWARDS_X, y - LINE_H / 2, FONT_SIZE, 100, "purchases ............ +$5.70"))
+REWARDS_COLUMN_OUT.write_bytes(build_runs_pdf([
+    [(40, top - LINE_H * n, FONT_SIZE, 100, line) for n, line in enumerate(pages[0])],
+    rewards_page,
+]))
+print(REWARDS_COLUMN_OUT)
 
 annual_pages = [
     [

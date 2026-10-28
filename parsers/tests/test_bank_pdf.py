@@ -154,12 +154,287 @@ def test_citi_reads_a_row_that_runs_into_the_column_beside_it(dump_pages):
     out = citi_credit_card.parse(beside, "unused.pdf")
     assert len(out["transactions"]) == 6 and not [c for c in out["checks"] if c["kind"] == "unread"]
 
-    # A column line with a figure of its own could be taken for the row's
-    # amount: the row is left unread, for the user's review.
-    figure = [page.replace(row, row + " Gas and EV charging 4% ...... +$5.00") for page in pages]
+    # A line of the rewards summary's ledger: its figure, after a dot leader
+    # and signed "+", is never a row's amount.
+    ledger = [page.replace(row, row + " Gas and EV charging 4% ...... +$5.00") for page in pages]
+    out = citi_credit_card.parse(ledger, "unused.pdf")
+    assert len(out["transactions"]) == 6 and not [c for c in out["checks"] if c["kind"] == "unread"]
+    assert -250.00 in [t["amount"] for t in out["transactions"]]
+    # Nothing in the ledger line is shaped like an amount, so a figure in
+    # the description is never taken for the row's amount.
+    figured = [page.replace(row, "09/04 09/04 COSTCO WHSE #0100 SAMPLE 12.50 CITY CA 250.00 and EV charging ...... +$0.60")
+               for page in pages]
+    out = citi_credit_card.parse(figured, "unused.pdf")
+    assert -250.00 in [t["amount"] for t in out["transactions"]] and -12.50 not in [t["amount"] for t in out["transactions"]]
+
+    # A figure beside it in any other form: the row is read by its own
+    # amount, the first on its line, when every check it is in holds...
+    figure = [page.replace(row, row + " Total Earned: +$5.00") for page in pages]
     out = citi_credit_card.parse(figure, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
+    assert -250.00 in [t["amount"] for t in out["transactions"]]
+    # ... and held for review, as not read, when one doesn't.
+    unconfirmed = [page.replace("Previous balance $300.00", "Previous balance $310.00") for page in figure]
+    out = citi_credit_card.parse(unconfirmed, "unused.pdf")
     assert len(out["transactions"]) == 5
-    assert [len(c["lines"]) for c in out["checks"] if c["kind"] == "unread"] == [1]
+    assert [[line["text"] for line in c["lines"]] for c in out["checks"] if c["kind"] == "unread"] == [
+        [row + " Total Earned: +$5.00"]]
+
+
+def test_citi_costco_reads_the_table_beside_its_rewards_summary(run_statement, dump_pages):
+    # A Costco card prints its rewards summary in a column beside the
+    # transaction table, and the text reads a row, or a section's heading,
+    # and the column's line level with it as one line, a line of the
+    # summary's ledger and its figure among them. Until 27 Oct 2026 such a
+    # row was left unread and its heading missed, so a purchase heading
+    # missed put the purchases with the payments.
+    lines = [line for page in dump_pages("citi-costco-rewards-column-synthetic-sample.pdf") for line in page.splitlines()]
+    assert "08/24 08/24 SAMPLE EV CHARGING CA $15.00 and EV charging ........... +$0.60" in lines
+    assert "09/10 AUTOPAY 260807000000000RAUTOPAY AUTO-PMT -$300.00 last statement ............ +$12.40" in lines
+    assert "Standard Purchases Earned this period ........ +$8.10" in lines
+    assert "purchases ............ +$5.70" in lines  # the ledger's own line: no heading
+    stmt = run_statement("citi-costco-rewards-column-synthetic-sample.pdf", "--expected-parser", "citi_credit_card.py")
+    assert len(stmt.transactions) == 6
+    assert sorted(t["amount"] for t in stmt.transactions) == [-250.0, -100.0, -45.0, -15.0, 25.0, 300.0]
+    results = stmt.raw["checkResults"]
+    assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+    assert "unread" not in {r["kind"] for r in results}
+
+
+@pytest.mark.parametrize("ledger", ["Earned this period ...... +$8.10", "1% on all other purchases ...... +$2.10"])
+def test_citi_reads_a_purchases_heading_beside_a_ledger_line(dump_pages, ledger):
+    # Missed, the heading leaves the purchases under Payments, Credits and
+    # Adjustments, and both of the Account Summary's checks fail.
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    merged = [page.replace("Standard Purchases", "Standard Purchases " + ledger) for page in pages]
+    assert merged != pages
+    out = citi_credit_card.parse(merged, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
+
+
+_CITI_THREE_PAGE = "citi-costco-three-page{}-synthetic-sample.pdf"
+
+
+def _citi_unread(results) -> list[tuple[int, int, str]]:
+    return [(line["page"], line["line"], line["text"]) for r in results if r["kind"] == "unread" for line in r["lines"]]
+
+
+def test_citi_costco_reads_an_autopay_beside_a_year(run_statement, dump_pages):
+    # A two-card statement whose autopay row runs on into the rewards
+    # column's "Your 2026 reward will follow". Revision 5 allowed no figure
+    # there, so the payment was not read: a tester's statement, its
+    # diagnostic giving this line's shape at page 3, line 17.
+    lines = dump_pages(_CITI_THREE_PAGE.format(""))[2].splitlines()
+    assert statement_checks.shape(lines[16]) == (
+        "99/99 AAAAAAA 999999999999999AAAAAAAA AAAA-AAA -$999.99 Aaaa 9999 aaaaaa aaaa aaaaaa")
+    stmt = run_statement(_CITI_THREE_PAGE.format(""), "--expected-parser", "citi_credit_card.py")
+    assert len(stmt.transactions) == 6 and 300.0 in [t["amount"] for t in stmt.transactions]
+    results = stmt.raw["checkResults"]
+    assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+
+
+@pytest.mark.parametrize("variant", ["-amount-beside", "-first-row-beside"])
+def test_citi_never_takes_a_rows_amount_from_the_column_beside_it(run_statement, variant):
+    # A purchase runs on into the rewards column's "Year to Date : $31.40":
+    # the authorized user's row, or - a tester's statement - the primary
+    # cardholder's first. Until revision 6 the row read as $31.40 and the
+    # purchases check failed with nothing to show why; revision 6 held it for
+    # review; it is read by its own amount, every check holding.
+    stmt = run_statement(_CITI_THREE_PAGE.format(variant), "--expected-parser", "citi_credit_card.py")
+    amounts = [t["amount"] for t in stmt.transactions]
+    assert -31.40 not in amounts and len(amounts) == 6
+    results = stmt.raw["checkResults"]
+    assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+
+
+def test_citi_suggests_a_held_rows_own_amount_for_review(dump_pages):
+    # Held for review when a check over it fails, the purchase run on into
+    # "Year to Date : $31.40" is suggested at its own amount, which accounts
+    # for the purchases it leaves out. Until 28 Oct 2026 the suggestion was
+    # the column's $31.40 and explained nothing.
+    pages = [page.replace("Previous balance $300.00", "Previous balance $310.00")
+             for page in dump_pages(_CITI_THREE_PAGE.format("-amount-beside"))]
+    out = citi_credit_card.parse(pages, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert [(line["text"], line["suggested"]["amount"]) for r in results if r["kind"] == "unread" for line in r["lines"]] == [
+        ("09/06 09/06 COSTCO GAS #0100 SAMPLE CITY CA $25.00 Year to Date : $31.40", -25.0)]
+    purchases = [r for r in results if r["label"] == "Account Summary: purchases, cash advances, fees and interest"]
+    assert [r["explanation"]["kind"] for r in purchases] == ["missing-lines"]
+
+
+def test_citi_reads_a_charge_printed_without_a_date(run_statement, dump_pages):
+    # An interest charge with no date is read by its own amount, dated the
+    # closing date, when its section's total - level with column text, read
+    # since revision 6 - and the summary's checks confirm it...
+    stmt = run_statement(_CITI_THREE_PAGE.format("-undated-interest"), "--expected-parser", "citi_credit_card.py")
+    results = stmt.raw["checkResults"]
+    assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+    charge = [t for t in stmt.transactions if t["description"] == "INTEREST CHARGED TO STANDARD PURCH"]
+    assert [(t["date"], t["amount"]) for t in charge] == [("2026-09-14", -4.20)]
+    # ... and held for review, as not read, when they don't.
+    pages = [page.replace("TOTAL INTEREST FOR THIS PERIOD $4.20", "TOTAL INTEREST FOR THIS PERIOD $5.20")
+             for page in dump_pages(_CITI_THREE_PAGE.format("-undated-interest"))]
+    out = citi_credit_card.parse(pages, "unused.pdf")
+    assert [line["text"] for c in out["checks"] if c["kind"] == "unread" for line in c["lines"]] == [
+        "INTEREST CHARGED TO STANDARD PURCH $4.20"]
+
+
+def test_citi_reads_a_row_beside_a_ledger_line_signed_minus(dump_pages):
+    # The rewards ledger prints a certificate's amount signed "-" ("reward
+    # certificate amount ...... -$12.40"): beside a row it is no figure of
+    # the row's, and in the fees section no charge, which revision 6 took
+    # it for.
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    ledger = "certificate amount ...... -$15.00"
+    changed = [page.replace(row, row + " " + ledger).replace("Fees Charged", "Fees Charged\n" + ledger) for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
+    assert not [c for c in out["checks"] if c["kind"] == "unread"]
+    # Read outright, as the ledger's other lines are: a check failing for
+    # another reason doesn't hold the row for review.
+    off = [page.replace("Previous balance $300.00", "Previous balance $310.00") for page in changed]
+    out = citi_credit_card.parse(off, "unused.pdf")
+    assert len(out["transactions"]) == 6 and not [c for c in out["checks"] if c["kind"] == "unread"]
+
+
+def test_citi_reads_a_credits_heading_beside_a_column_figure(run_statement, dump_pages):
+    # The authorized user's Payments, Credits and Adjustments heading level
+    # with "Year to Date : $31.40" is a heading, printed in title case as
+    # Citi prints its headings: its return is a credit. Until revision 8 the
+    # heading was missed and the return read with the purchases.
+    stmt = run_statement(_CITI_THREE_PAGE.format("-credits-beside"), "--expected-parser", "citi_credit_card.py")
+    assert 20.0 in [t["amount"] for t in stmt.transactions]
+    results = stmt.raw["checkResults"]
+    assert results and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+    # The same words in capitals, as a charge prints them, head nothing.
+    pages = [page.replace("Payments, Credits and Adjustments Year to Date : $31.40",
+                          "PAYMENTS, CREDITS AND ADJUSTMENTS Year to Date : $31.40")
+             for page in dump_pages(_CITI_THREE_PAGE.format("-credits-beside"))]
+    out = citi_credit_card.parse(pages, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert not all(r["ok"] for r in results)
+
+
+@pytest.mark.parametrize("beside", ["Your 2026 reward will follow", "4% on eligible gas", "12 visits this year"])
+def test_citi_reads_a_row_beside_figures_that_are_not_money(dump_pages, beside):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    changed = [page.replace(row, row + " " + beside) for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
+
+
+@pytest.mark.parametrize("column", ["Your 2026 reward will follow", "Year to Date : $31.40"])
+def test_citi_reads_a_header_heading_and_total_beside_column_text(dump_pages, column):
+    # The table's header, a heading and a section's total level with column
+    # text, a "$" figure of its own in it or not, all read. The fees total,
+    # $1.50 with no fee rows, fails its check alone: the heading read, the
+    # purchases are in their own section and the summary's checks hold.
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    changed = [page.replace("Sale Post", "Sale Post " + column)
+               .replace("Standard Purchases", "Standard Purchases " + column)
+               .replace("TOTAL FEES FOR THIS PERIOD $0.00", "TOTAL FEES FOR THIS PERIOD $1.50 " + column)
+               for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6
+    assert {r["label"] for r in results if not r["ok"]} == {"Fees Charged"}
+
+
+@pytest.mark.parametrize("stray", ["09/12 09/12 SAMPLE STORE CITY CA $9.00 Your 2026 reward will follow",
+                                   "09/12 09/12 SAMPLE STORE CITY CA $9.00 Year to Date : $31.40 so far"])
+def test_citi_reports_a_row_outside_the_table_that_runs_into_column_text(dump_pages, stray):
+    # A row outside the table is reported, whatever the column beside it ran
+    # on into it.
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    changed = [page.replace("Interest charge calculation", "Interest charge calculation\n" + stray) for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    assert [line["text"] for c in out["checks"] if c["kind"] == "unread" for line in c["lines"]] == [stray]
+
+
+# A tentative reading no check covers is confirmed by nothing: when the
+# summary doesn't read, the row is held for review, never kept.
+def test_citi_holds_a_tentative_reading_no_check_covers(dump_pages):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    held = "09/04 09/04 COSTCO WHSE #0100 SAMPLE $1.00 CITY CA $250.00"
+    changed = [page.replace(row, held).replace("Previous balance", "Opening figure").replace("New balance", "Closing figure")
+               .replace("Purchases +", "Buys +") for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    assert -1.00 not in [t["amount"] for t in out["transactions"]]
+    assert [line["text"] for c in out["checks"] if c["kind"] == "unread" for line in c["lines"]] == [held]
+
+
+# A figure shaped like money right after a row's amount ("$250.00 5.00
+# back") is no text beside it: the row is only a tentative reading, held for
+# review when a check over it fails.
+def test_citi_holds_a_row_followed_by_a_money_shaped_figure_when_unconfirmed(dump_pages):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    changed = [page.replace(row, row + " 5.00 back").replace("Previous balance $300.00", "Previous balance $310.00")
+               for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    assert [line["text"] for c in out["checks"] if c["kind"] == "unread" for line in c["lines"]] == [row + " 5.00 back"]
+
+
+# A line of the rewards column standing alone in Fees Charged or Interest
+# Charged, or level with the Interest Charged heading, is no charge: the
+# statement reads clean, a tentative row elsewhere kept.
+def test_citi_takes_no_column_line_in_the_fees_sections_for_a_charge(dump_pages):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    changed = [page.replace(row, row + " Total Earned: +$5.00")
+               .replace("Fees Charged", "Fees Charged\nYear to Date : $31.40")
+               .replace("Interest Charged", "Interest Charged Year to Date : $31.40") for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
+    assert not [c for c in out["checks"] if c["kind"] == "unread"]
+
+
+# A dated line whose only figure is the column's - after a label's colon or a
+# ledger's dot leader - is no row: reported, never read as that figure.
+@pytest.mark.parametrize("tail", ["Year to Date : $250.00", "certificate amount ...... -$250.00"])
+def test_citi_never_reads_a_column_figure_as_a_rows_amount(dump_pages, tail):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    row = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA $250.00"
+    line = "09/04 09/04 COSTCO WHSE #0100 SAMPLE CITY CA " + tail
+    out = citi_credit_card.parse([page.replace(row, line) for page in pages], "unused.pdf")
+    assert len(out["transactions"]) == 5
+    assert [l["text"] for c in out["checks"] if c["kind"] == "unread" for l in c["lines"]] == [line]
+
+
+# An undated charge level with a line of the rewards ledger is read by its
+# own amount, the ledger line left aside, its section's total confirming it.
+def test_citi_reads_an_undated_charge_beside_a_ledger_line(dump_pages):
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    changed = [page.replace("TOTAL FEES FOR THIS PERIOD $0.00", "LATE FEE $41.00 4% on eligible gas ...... +$1.80\n"
+                            "TOTAL FEES FOR THIS PERIOD $41.00").replace("Fees +$0.00", "Fees +$41.00")
+               .replace("New balance $385.00", "New balance $426.00") for page in pages]
+    out = citi_credit_card.parse(changed, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+    assert [(t["description"], t["amount"]) for t in out["transactions"] if t["description"] == "LATE FEE"] == [("LATE FEE", -41.0)]
+
+
+def test_citi_takes_a_ledger_line_of_its_own_for_no_heading(dump_pages):
+    # "purchases ...... +$5.70" ends a ledger line of the rewards summary
+    # ("2% on Costco and Costco.com / purchases"); read as the Purchases
+    # heading, it would put the payments after it with the purchases. It
+    # holds the bound on what runs on from a heading, which revision 4 had
+    # by allowing nothing.
+    pages = dump_pages("citi-costco-synthetic-sample.pdf")
+    heading = "Payments, Credits and Adjustments"
+    stray = [page.replace(heading, heading + "\npurchases ...... +$5.70") for page in pages]
+    assert stray != pages
+    out = citi_credit_card.parse(stray, "unused.pdf")
+    results = statement_checks.evaluate(out["checks"], {"cash_transactions": out["transactions"]}, out["statementDate"])
+    assert len(out["transactions"]) == 6 and all(r["ok"] for r in results)
 
 
 def test_citi_costco_holds_changed_activity_for_review(dump_pages):

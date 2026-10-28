@@ -151,6 +151,27 @@ class TestSuggestRow:
         assert sc.suggest_row("01/05 POUND STERLING", "2026-01-22", -1) is None
         assert sc.suggest_row("13/45 NOT A DATE 1.00", "2026-01-22", -1) is None
 
+    def test_a_row_run_on_into_a_column_beside_it_is_read_by_its_own_amount(self):
+        # A card's rewards summary prints in a column beside the table, and
+        # the PDF reader can run a row on into one of its lines: the row's
+        # amount is the figure before the column's words, not the column's.
+        row = sc.suggest_row("08/21 08/21 SAMPLE MERCHANT CA $12.34 Year to Date : $31.40", "2026-09-14", -1)
+        assert (row["date"], row["description"], row["amount"]) == ("2026-08-21", "08/21 SAMPLE MERCHANT CA", -12.34)
+        # Its printed sign comes with it.
+        for line in ("09/10 AUTOPAY SAMPLE -$300.00 last statement ...... +$12.40",
+                     "09/10 AUTOPAY SAMPLE $-300.00 last statement ...... +$12.40",
+                     "08/22 08/22 SAMPLE RETURN CA $300.00 CR Year to Date : $31.40",
+                     "08/22 08/22 SAMPLE RETURN CA $300.00- Year to Date : $31.40",
+                     "08/22 08/22 SAMPLE RETURN CA ($300.00) Year to Date : $31.40"):
+            assert sc.suggest_row(line, "2026-09-14", -1)["amount"] == 300.0, line
+
+    def test_figures_side_by_side_are_the_rows_own_columns(self):
+        # A reward and then the amount: the row's is the last, as before,
+        # whatever runs on after it. A marker of a letter or two is no word.
+        assert sc.suggest_row("09/02/2026 SAMPLE GROCER 2% $1.68 $84.12", "", -1)["amount"] == -84.12
+        assert sc.suggest_row("09/02/2026 SAMPLE GROCER 2% $1.68 $84.12 Year to Date : $31.40", "", -1)["amount"] == -84.12
+        assert sc.suggest_row("08/15 SAMPLE CORP Cash In Lieu $45.00f $12.34", "2026-09-14", -1)["amount"] == -12.34
+
 
 class TestAdjustments:
     def test_flip_exclude_and_include_and_renumber_the_checks(self):

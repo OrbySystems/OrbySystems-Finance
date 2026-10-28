@@ -119,15 +119,37 @@ def validate_checks(checks, tables: dict, module_name: str) -> None:
 _LEAD_DATE = re.compile(r"^\s*(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b")
 _TAIL_AMOUNT = re.compile(
     r"(?P<neg1>-)?\$?(?P<paren>\()?\$?(?P<num>\d[\d,]*\.\d{2})\)?(?P<neg2>-)?(?:\s*(?P<mark>CR|DR))?\s*$", re.I)
+# A "$" figure anywhere on a line, with the marks _TAIL_AMOUNT reads as its
+# sign.
+_DOLLAR_FIGURE = re.compile(r"-?(?:\$\s?-?\(?|\(\$)\d[\d,]*\.\d{2}(?!\d)\)?-?(?:\s*(?:CR|DR)\b)?", re.I)
 
 
 def suggest_row(text: str, statement_date: str, sign: int, template: dict | None = None) -> dict | None:
     """A transaction row read generically from a line the parser skipped:
     a date at its start, an amount at its end, the words between. sign (+1
     or -1) is the sign the section's other rows carry, which the line
-    itself rarely prints. None when the line has no date or no amount."""
-    d, a = _LEAD_DATE.match(text), _TAIL_AMOUNT.search(text)
-    if not d or not a:
+    itself rarely prints. None when the line has no date or no amount.
+
+    Where a word comes between two "$" figures, the line is taken to end at
+    the figure before the word: what follows is a column beside the row
+    that the PDF reader ran on into it (a Citi Costco card's rewards
+    summary, "$12.34 Year to Date : $31.40"), and its figure is not the
+    row's - until 28 Oct 2026 it was suggested. Figures with no word between
+    them are the row's own columns, the amount last (Apple Card's "2% $1.68
+    $84.12", Daily Cash and then the amount); a marker of one or two letters
+    is no word (Fidelity's FIFO "$45.00f", E*TRADE's "LT"). A "$" figure in
+    a description ("CASH BACK $20.00 SAMPLE GROCER $65.40") reads like a
+    row's own and is suggested in its place."""
+    d = _LEAD_DATE.match(text)
+    if not d:
+        return None
+    figures = [f for f in _DOLLAR_FIGURE.finditer(text, d.end()) if text[d.end():f.start()].strip()]
+    for figure, following in zip(figures, figures[1:]):
+        if re.search(r"[A-Za-z]{3}", text[figure.end():following.start()]):
+            text = text[:figure.end()]
+            break
+    a = _TAIL_AMOUNT.search(text)
+    if not a:
         return None
     month, day = int(d.group(1)), int(d.group(2))
     if not (1 <= month <= 12 and 1 <= day <= 31):
