@@ -1,7 +1,8 @@
 """KeyPoint Credit Union statement of account (keypoint_credit_union).
 
-The demo statement, and a copy with its labels' words run together, are
-generated from invented data by
+The demo statement, a copy with its labels' words run together, and a
+trust's statement that names KeyPoint only by its web address are generated
+from invented data by
 tests/generators/gen-keypoint-credit-union-sample.py. The page texts in the
 unit tests below are its pages, changed: their shapes follow the
 statement's layout, their names and figures come from no statement.
@@ -17,6 +18,7 @@ from institutions import keypoint_credit_union
 
 DEMO = "keypoint-credit-union-synthetic-sample.pdf"
 RUN_TOGETHER = "keypoint-credit-union-run-together-synthetic-sample.pdf"
+TRUST = "keypoint-credit-union-trust-synthetic-sample.pdf"
 
 
 def _parse(pages: list[str]):
@@ -62,6 +64,49 @@ def test_detect_needs_the_layout_and_keypoints_name(dump_pages):
     assert keypoint_credit_union.detect(head)[0] is True
     assert keypoint_credit_union.detect(head.replace("KeyPoint", "Lakeshore"))[0] is False
     assert keypoint_credit_union.detect(head.replace("Withdrawal Deposit Balance", "Amount Balance"))[0] is False
+
+
+# A statement that names KeyPoint only by its web address, a trust's in the
+# layout of a second scrambled sample, reads like any other: the money
+# market account carried on to a page with its column header and no rows,
+# and the savings account with no activity checked though it has no rows.
+def test_a_statement_that_names_keypoint_only_by_its_web_address(run_statement, dump_pages):
+    assert "keypoint" not in "\n".join(dump_pages(TRUST)).lower()
+    stmt = run_statement(TRUST, "--expected-parser", "keypoint_credit_union.py")
+    assert (stmt.institution, stmt.statement_date) == ("KeyPoint Credit Union", "2026-12-31")
+    assert stmt.raw["parser"] == {"id": "keypoint_credit_union", "tier": "verified", "bundled": True}
+    by_account: dict[tuple[str, str], list[float]] = {}
+    for t in stmt.transactions:
+        by_account.setdefault((t["account"], t["accountType"]), []).append(t["amount"])
+    assert by_account == {
+        ("5670", "Checking"): [200.0, -325.0, 400.0, -325.0, 300.0],
+        ("0002", "Money Market"): [-200.0, -400.0, -300.0, 1.95],
+    }
+    results = stmt.raw["checkResults"]
+    assert len(results) == 9 and all(r["ok"] for r in results), [r for r in results if not r["ok"]]
+    assert sum("REGULAR SAVINGS Account No. 0003" in r["label"] for r in results) == 3
+
+
+# KeyPoint's web address names it as its name does, never without the
+# layout, and never in a row: another credit union's member can pay KeyPoint.
+def test_detect_takes_keypoints_web_address_for_its_name(dump_pages):
+    head = "\n".join(dump_pages(TRUST))
+    assert keypoint_credit_union.detect(head)[0] is True
+    assert keypoint_credit_union.detect(head.replace("Statement of Account", "Account Summary"))[0] is False
+    elsewhere = head.replace("kpcu.com", "lakeshorecu.org")
+    assert keypoint_credit_union.detect(elsewhere)[0] is False
+    paying = elsewhere.replace("12/12 Check 2001", "12/12 Bill Pay KPCU.COM LOAN PMT")
+    assert paying != elsewhere and keypoint_credit_union.detect(paying)[0] is False
+
+
+# A file can hold two statements of one period: the trust's sample started
+# its own on page 4 of 7. Each reads as it does alone, its accounts not
+# joined to the other's.
+def test_two_statements_in_one_file_read_as_each_does_alone(dump_pages):
+    demo, trust = dump_pages(DEMO), dump_pages(TRUST)
+    out, results = _parse(demo + trust)
+    assert out["transactions"] == _parse(demo)[0]["transactions"] + _parse(trust)[0]["transactions"]
+    assert len(results) == 18 and _failed(results) == set()
 
 
 # The scrambled sample's text ran labels' words together ("PostDate",

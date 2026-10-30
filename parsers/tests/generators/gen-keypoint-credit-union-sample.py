@@ -6,7 +6,14 @@ labels over figures, opening on a balance line. Every figure adds up.
 
 A second copy has its labels' words run together ("StartDate:",
 "AccountNo.12345678", "PostDate TransactionDescription"), as the scrambled
-sample's text, and maybe the statement's own, has them."""
+sample's text, and maybe the statement's own, has them.
+
+A third statement is a trust's, in the layout of a second scrambled sample:
+KeyPoint named only by its web address, the trust's address block run into
+the lines of an IMPORTANT MESSAGES block beside it, a checking account fed
+by transfers from a money market savings account that is paid interest, that
+account's column header carried on to the next page with no rows under it
+before its dividend lines, and a savings account with no activity."""
 
 from pathlib import Path
 
@@ -15,6 +22,7 @@ FONT_SIZE = 9
 LINE_H = 13
 OUT = Path(__file__).resolve().parent.parent / "fixtures" / "keypoint-credit-union-synthetic-sample.pdf"
 RUN_TOGETHER_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "keypoint-credit-union-run-together-synthetic-sample.pdf"
+TRUST_OUT = Path(__file__).resolve().parent.parent / "fixtures" / "keypoint-credit-union-trust-synthetic-sample.pdf"
 
 SUMMARY_LABELS = [
     "Beginning Dividend Service Ending",
@@ -138,3 +146,77 @@ def run_together(line: str) -> str:
 
 RUN_TOGETHER_OUT.write_bytes(build_pdf([[run_together(line) for line in page] for page in pages]))
 print(RUN_TOGETHER_OUT)
+
+
+def dividend_lines(earned: str, average: str, minimum: str, apy: str) -> list[str]:
+    return [
+        f"The amount of Dividend earned between 12-01-2026 and 12-31-2026 is ${earned}.",
+        f"The average daily balance during this period was ${average}.",
+        f"The minimum balance during this period was ${minimum}.",
+        f"The Annual Percentage Yield Earned for this account is {apy}%.",
+    ]
+
+
+trust_pages = [
+    [
+        "1 of 2",
+        "Statement of Account",
+        "100 Sample Plaza, Suite 200",
+        "Sample City, CA 95000",
+        "Start Date: 12/01/2026",
+        "End Date: 12/31/2026",
+        "kpcu.com | (800) 555-0100",
+        "IMPORTANT MESSAGES",
+        "Holiday Hours: Sample branches",
+        "PAT EXAMPLE TRUSTEE close at 2 p.m. on December 24 and stay closed",
+        "SAM EXAMPLE TRUSTEE on December 25 and January 1. Online banking",
+        "EXAMPLE FAMILY TRUST DTD 03/15/99 stays open, apart from upkeep (2 a.m. to",
+        "200 SAMPLE LANE 4 a.m. on January 2). Questions? Write to",
+        "SAMPLE CITY CA 95000 sample-notices@kpcu.com.",
+        "PREFERRED CHECKING Account No. 12345670",
+        *SUMMARY_LABELS,
+        "$210.00 $900.00 $0.00 $650.00 $0.00 $460.00",
+        COLUMNS,
+        "12/01 Beginning Balance 210.00",
+        "12/01 Deposit Transfer From *0002; REF # 1000001 200.00 410.00",
+        "12/12 Check 2001 325.00 85.00",
+        "12/15 Deposit Transfer From *0002; REF # 1000002 400.00 485.00",
+        "12/26 Check 2002 325.00 160.00",
+        "12/29 Deposit Transfer From *0002; REF # 1000003 300.00 460.00",
+        "Summary of Overdraft and Returned Item Fees",
+        "Total For This Period Total Year-To-Date",
+        "Total Overdraft Fees $0.00 $0.00",
+        "Total Returned Item Fees $0.00 $0.00",
+        "CLEARED CHECKS",
+        "Check# Date Amount Check# Date Amount",
+        "2001 12/12 325.00 2002 12/26 325.00",
+        "MONEY MARKET SAVINGS Account No. 12340002",
+        "Dividend Rate 0.050% Dividend Paid YTD: $20.40",
+        *SUMMARY_LABELS,
+        "$5,000.00 $0.00 $1.95 $900.00 $0.00 $4,101.95",
+        COLUMNS,
+        "12/01 Beginning Balance 5,000.00",
+        "12/01 Withdrawal Transfer To *5670; REF # 1000001 200.00 4,800.00",
+        "12/15 Withdrawal Transfer To *5670; REF # 1000002 400.00 4,400.00",
+        "12/29 Withdrawal Transfer To *5670; REF # 1000003 300.00 4,100.00",
+        "12/31 Credit Interest 1.95 4,101.95",
+    ],
+    [
+        "12/01/2026",
+        "12/31/2026",
+        "2 of 2",
+        COLUMNS,
+        *dividend_lines("1.95", "4,452.03", "4,100.00", "0.050"),
+        "REGULAR SAVINGS Account No. 12340003",
+        "Dividend Rate 0.050% Dividend Paid YTD: $0.00",
+        *SUMMARY_LABELS,
+        "$300.00 $0.00 $0.00 $0.00 $0.00 $300.00",
+        COLUMNS,
+        "12/01 Beginning Balance 300.00",
+        *dividend_lines("0.00", "300.00", "300.00", "0.000"),
+        "Federally insured by NCUA",
+    ],
+]
+
+TRUST_OUT.write_bytes(build_pdf(trust_pages))
+print(TRUST_OUT)

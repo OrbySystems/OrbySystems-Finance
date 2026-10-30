@@ -28,7 +28,7 @@ def test_demo_statement(run_statement):
     stmt = run_statement(DEMO)
     assert stmt.institution == "Sparkasse Musterstadt"
     assert stmt.statement_date == "2026-10-31"
-    assert stmt.raw["parser"] == {"id": "sparkasse_checking", "tier": "provisional", "bundled": True}
+    assert stmt.raw["parser"] == {"id": "sparkasse_checking", "tier": "verified", "bundled": True}
 
     rows = stmt.transactions
     assert len(rows) == 10

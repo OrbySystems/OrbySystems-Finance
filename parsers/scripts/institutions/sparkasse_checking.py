@@ -51,8 +51,8 @@ from datetime import datetime
 import parser_common
 from institutions import common
 
-SUPPORT_TIER = parser_common.SUPPORT_TIER_PROVISIONAL
-PARSER_REVISION = 1
+SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
+PARSER_REVISION = 2
 
 INSTITUTION = "Sparkasse"
 

@@ -36,14 +36,16 @@ MARKET", a share draft); a name that says none of these is passed on as
 printed, which the app reports as unclassified rather than guessed at
 (common.classify_account_type).
 
-Built from a scrambled sample of a real statement (README_addparser.md).
-detect() rests on the layout's own words - "Statement of Account", the
-summary's labels and the column header - and on KeyPoint's name. The
-sample's text ran some labels' words together ("StartDate:", "AccountNo.",
-"PostDate TransactionDescription"), as the statement's own text layer may
-(the scrambler draws a word's boundaries where the original's text had
-them), so every label is matched with or without the spaces between its
-words.
+Built from a scrambled sample of a real statement (orby-core's
+README/addparser.md). detect() rests on the layout's own words - "Statement
+of Account", the summary's labels and the column header - and on KeyPoint's
+name or its web address. A second sample, a trust's statement, printed only
+the address: "kpcu.com" in its page header and in an email address. The
+first sample's text ran some labels' words together ("StartDate:",
+"AccountNo.", "PostDate TransactionDescription"), as the statement's own
+text layer may (the scrambler draws a word's boundaries where the
+original's text had them), so every label is matched with or without the
+spaces between its words.
 """
 
 import re
@@ -53,9 +55,14 @@ import parser_common
 from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
-PARSER_REVISION = 1
+PARSER_REVISION = 2
 
 INSTITUTION = "KeyPoint Credit Union"
+# KeyPoint's web address, which can be all a statement prints of its name.
+# Counted outside the rows only, since another credit union's statement can
+# have a member paying KeyPoint; the name counts anywhere, as it did when the
+# parser was verified.
+_WEB_ADDRESS = "kpcu.com"
 
 DIAGNOSTIC_FIELDS = {
     "endDate": "End Date",
@@ -104,9 +111,11 @@ def detect(head_text: str) -> tuple[bool, str]:
     layout = (re.search(r"statement\s*of\s*account", lower)
               and any(_SUMMARY_LABELS_RE.match(line) for line in lines)
               and any(_TABLE_HEADER_RE.match(line) for line in lines))
-    if layout and "keypoint" in lower:
+    named = "keypoint" in lower or any(_WEB_ADDRESS in line.lower() for line in lines if not _DATED_RE.match(line))
+    if layout and named:
         return True, "matched KeyPoint Credit Union statement of account"
-    return False, "KeyPoint Credit Union markers (KeyPoint, Statement of Account, Post Date ... Balance) not found"
+    return False, ("KeyPoint Credit Union markers (KeyPoint or kpcu.com, Statement of Account, Post Date ... Balance)"
+                   " not found")
 
 
 def _money(raw: str) -> float:
