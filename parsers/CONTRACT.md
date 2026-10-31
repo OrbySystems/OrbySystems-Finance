@@ -218,7 +218,7 @@ Any of the three tables may be omitted or empty.
 A share movement with no cash behind it (merger, assignment, expiry,
 share-lending adjustment) is a `brokerage_transactions` row with
 `transaction_type = "corporate_action"`, `amount` `0.00`, the share
-change in `quantity` (its sign is not authoritative; see "Sign of `quantity`"),
+change in `quantity`, never negative (see "Sign of `quantity`"),
 `corporate_event` saying which kind (below), `subtype` `"Out"` for the security
 leaving or `"In"` for the one arriving, and — when the statement names the
 security on the other side — its identifier in `related_security_id`.
@@ -250,34 +250,44 @@ A parser that predates the field (a user's own) still works: OrbySystems
 derives the value from the row and warns at import. A bundled parser is held
 to it by `tests/test_transaction_vocabulary.py`.
 
-**A transfer's direction is the sign of the row**: its `amount`, else its
-`quantity` when no cash moves (positive in, negative out). That is the one
-source; no field repeats it. `transfer_in` / `transfer_out` also name the
-direction in the type, and `tests/test_transaction_vocabulary.py` fails a
-bundled parser whose type disagrees with the sign. `internal_transfer` is the
-*scope* (both sides are the user's own accounts, which the linker and the
-performance figures rely on) and carries no direction of its own.
+**A transfer says its direction in `subtype`**: every `transfer_in`,
+`transfer_out` and `internal_transfer` row sets it to `"In"` or `"Out"`.
+`transfer_in` / `transfer_out` also name the direction in the type.
+`internal_transfer` is the *scope* (both sides are the user's own accounts,
+which the linker and the performance figures rely on) and carries no direction
+of its own, so on it `subtype` is the only place the direction is, whether or
+not cash moves. When cash moves, `amount` is signed as on every row (positive
+in, negative out) and must agree. `parse()` rejects a transfer whose type,
+`subtype` and `amount` disagree.
 
-**Sign of `quantity`.** On a trade or income row (`buy`, `sell`, `redemption`,
-`dividend`, ...) `quantity` is unsigned (a sale's quantity is positive): the
-type and the signed `amount` say which way it went. On a share movement that is not a trade it is signed,
-positive arriving and negative leaving, because there may be no cash for
-`amount` to carry the direction: `transfer_in` / `transfer_out`, and an
-`internal_transfer` with no cash. On a `corporate_action` the sign is not
-authoritative, since contracts and some issuers print it unsigned (a parser
-that does print the two legs of a merger signed lets OrbySystems pair them by
-their cancelling quantities); the direction is `corporate_event` (a `_in` / `_out` event, or one that implies it
-— `share_distribution` and `spinoff` arrive, `expired`, `assigned` and
-`exercised` leave, `corporate_event_directions` in the vocabulary) and
-`subtype`. `parse()` rejects a `subtype` of `"In"` / `"Out"` that contradicts
-its event; the event is authoritative and `subtype` is a display hint.
+**Sign of `quantity`.** A transaction's `quantity` is never negative, on any
+row: a sale is a `sell` with a positive quantity, and shares leaving by
+transfer or corporate action are a positive quantity with `subtype` `"Out"`.
+The direction is never in the number. On a trade or income row (`buy`,
+`sell`, `redemption`, `dividend`, ...) the type and the signed `amount` say
+which way it went. On a transfer it is `subtype` (above). On a
+`corporate_action` it is `subtype`, and also `corporate_event` when the event
+implies a direction (a `_in` / `_out` event, `share_distribution` and
+`spinoff` arriving, `expired`, `assigned` and `exercised` leaving:
+`corporate_event_directions` in the vocabulary); `parse()` rejects a
+`subtype` that contradicts its event, since the event is authoritative. For
+an event that implies none (`split`, `reverse_split`, `cash_in_lieu`,
+`other`), `subtype` alone says which way.
+
+A statement that prints shares leaving as a negative number is read the same
+way: `parser_common.set_directions(rows)`, called last (after
+`set_corporate_events`), sets `subtype` on every transfer and corporate action
+from what the parser set, else the type, else the event, else the sign of
+`amount`, else the sign of `quantity` as printed, and then makes every
+quantity positive. A holding's `quantity` is different and keeps its sign: a
+written option contract is a negative holding.
 
 ### Strict mode and backwards-compatible mode
 
 The rules added with `corporate_event` and the direction / unsigned-quantity
 contract (a `corporate_action` sets `corporate_event`; a transfer or corporate
 action says `In` / `Out` in `subtype`, agreeing with its type, event and amount;
-`quantity` is never negative) are enforced in two ways:
+a transaction's `quantity` is never negative) are enforced in two ways:
 
 | mode | when | a broken rule is |
 |---|---|---|
@@ -285,10 +295,13 @@ action says `In` / `Out` in `subtype`, agreeing with its type, event and amount;
 | **backwards compatible** (the default) | importing a statement | a warning on the import, one line per rule with the row count; a `corporate_event` that is invalid or on the wrong row is dropped so the importer derives it |
 
 So a parser written before these rules (a user's own) keeps importing, and the
-import shows what to fix. `tests/conftest.py`'s `run_statement` passes
-`--strict`, and `tests/test_transaction_vocabulary.py` fails if any bundled
-parser draws a warning in the default mode. Rules that existed before - an
-unknown `transaction_type`, a wrong-typed field - are errors in both.
+import shows what to fix. A negative quantity from such a parser reaches the
+importer as printed, and OrbySystems reads its sign as the direction only on a
+row with no `subtype` `In` / `Out` to say so. `tests/conftest.py`'s
+`run_statement` passes `--strict`, and `tests/test_transaction_vocabulary.py`
+fails if any bundled parser draws a warning in the default mode. Rules that
+existed before - an unknown `transaction_type`, a wrong-typed field - are
+errors in both.
 
 ### Declaring what a format cannot contain: `NOT_APPLICABLE`
 

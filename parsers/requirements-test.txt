@@ -3,4 +3,7 @@ pytest
 # gen-bofa-stmt-checks-sample.py draws a placeholder check image.
 pillow
 # Synthetic investment-statement generators render deterministic PDFs.
-reportlab
+# Pinned: orby-core compares those PDFs byte for byte with its committed
+# fixtures, and a ReportLab release can change the bytes (4.4.6 did). A
+# bump goes with those fixtures regenerated on the new version.
+reportlab==5.1.0
