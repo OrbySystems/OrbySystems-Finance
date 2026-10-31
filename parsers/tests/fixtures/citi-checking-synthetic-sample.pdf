@@ -1,0 +1,47 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1106 >>
+stream
+BT /F1 9 Tf 1 0 0 1 40 747 Tm (September 1 - September 30, 2026) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 734 Tm (Citi Test Account ending in 4321) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 721 Tm (Value of Accounts Summary) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 708 Tm (Checking) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 695 Tm (Everyday Checking 0000004321) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 682 Tm (Activity) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 669 Tm (Date Description Amount Subtracted Amount Added Balance) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 656 Tm (09/01/26 Opening Balance 1,000.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 643 Tm (09/02/26 SAMPLE PAYROLL 500.00 1,500.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 630 Tm (09/03/26 SAMPLE RENT 600.00 900.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 617 Tm (09/04/26 SAMPLE MARKET 40.00 860.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 604 Tm (09/05/26 SAMPLE REFUND 10.00 870.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 591 Tm (09/06/26 SAMPLE TRANSFER 70.00 800.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 578 Tm (REFERENCE TEXT) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 565 Tm (Total Subtracted/Added 710.00 510.00) Tj ET
+BT /F1 9 Tf 1 0 0 1 40 552 Tm (09/30/26 Closing Balance 800.00) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000185 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1468
+%%EOF
