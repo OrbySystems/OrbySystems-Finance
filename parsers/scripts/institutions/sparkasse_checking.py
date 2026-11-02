@@ -120,9 +120,17 @@ def _currency_accepted() -> bool:
     return hasattr(parser_common, "normalize_currency_codes")
 
 
+# The cooperative banks' Kontoauszug (vr_bank_checking.py) has the same
+# words, and a booking to a Bausparkasse puts the name on its page; its
+# column header and "alter Kontostand" line tell it apart.
+_COOPERATIVE_RE = re.compile(r"\bBu\.?-?\s?Tag\b.*\bWert\b.*\bVorgang\b")
+
+
 def detect(head_text: str) -> tuple[bool, str]:
     if not re.search(r"sparkasse", head_text, re.I):
         return False, "'Sparkasse' not found"
+    if _COOPERATIVE_RE.search(head_text) and re.search(r"alter\s+Kontostand", head_text, re.I):
+        return False, "a cooperative bank's Kontoauszug (Bu-Tag Wert Vorgang, alter Kontostand), not a Sparkasse's"
     lines = _lines(head_text)
     if "Kontoauszug" in head_text and "Kontostand" in head_text and _DE_IBAN_RE.search(head_text):
         return True, "matched Sparkasse Kontoauszug (Kontoauszug, Kontostand, DE IBAN)"
