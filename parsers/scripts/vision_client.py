@@ -13,11 +13,14 @@ import re
 import urllib.request
 
 
-def call_vision(vision: dict, image_b64: str, prompt: str, image_format: str = "png") -> str:
+def call_vision(vision: dict, image_b64: str, prompt: str, image_format: str = "png", *, timeout: float = 120) -> str:
     """Sends image_b64 (base64-encoded, image_format e.g. "png") plus a
     text prompt to vision - an OpenAI-compatible chat endpoint described
     as {"endpoint", "model", "api_key"}, endpoint ending in ".../v1" -
     and returns the model's raw text response (message.content).
+
+    timeout is the socket timeout in seconds; full-page callers can allow
+    longer generations while existing cropped-image calls keep 120 seconds.
 
     Raises (urllib.error.URLError, OSError, TimeoutError, KeyError,
     ValueError, ...) on any network/HTTP/response-shape failure -
@@ -66,7 +69,7 @@ def call_vision(vision: dict, image_b64: str, prompt: str, image_format: str = "
         data=json.dumps(payload).encode(),
         headers=headers,
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         result = json.load(resp)
     return result["choices"][0]["message"]["content"]
 
