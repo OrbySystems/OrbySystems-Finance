@@ -101,12 +101,32 @@ def _resize_unmeasured(chars: list[dict]) -> list[dict] | None:
     return out
 
 
+def _horizontal_chars(chars):
+    """Normalize reflected horizontal glyphs without changing rotated text."""
+    out = None
+    for i, char in enumerate(chars):
+        matrix = char.get("matrix")
+        # Older trust PDFs use a negative vertical scale for horizontal
+        # glyphs. pdfminer marks these non-upright and splits every letter.
+        if (not char.get("upright", True) and matrix and len(matrix) == 6
+                and matrix[0] > 0 and matrix[3] < 0
+                and matrix[1] == 0 and matrix[2] == 0):
+            if out is None:
+                out = list(chars)
+            out[i] = {**char, "upright": True}
+    return out
+
+
 def page_text(page) -> str:
     """The text of one pdfplumber page as every parser reads it: words
     apart by SPACE_GAP_EM of the font size are separate words, and a
     character too small to have been measured (_resize_unmeasured) is read
-    at the size of its line, on its own baseline."""
-    chars = _resize_unmeasured(page.chars)
+    at the size of its line, on its own baseline. Reflected horizontal
+    glyphs are grouped as horizontal text; rotated glyphs stay rotated."""
+    horizontal = _horizontal_chars(page.chars)
+    chars = _resize_unmeasured(horizontal if horizontal is not None else page.chars)
+    if chars is None:
+        chars = horizontal
     if chars is None:
         return page.extract_text(x_tolerance_ratio=SPACE_GAP_EM) or ""
     # What page.extract_text lays the page's text out with.
