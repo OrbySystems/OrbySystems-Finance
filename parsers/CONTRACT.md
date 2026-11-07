@@ -173,7 +173,9 @@ an older release must leave it out.
 `vision`, when not `None`, is `{"endpoint", "model", "api_key"}` for an
 OpenAI-compatible vision-capable chat endpoint (`check_ocr.py` uses it to
 read embedded check images). `pdf_path` is the original file for a parser
-that must re-open the PDF itself. Most parsers ignore both.
+that must re-open the PDF itself. Most parsers ignore both. The PDF may be
+password-protected: open it with `pdfplumber.open(pdf_path)`, naming no
+password, and the dispatcher supplies the one the user typed.
 
 ## `parse()` — `KIND_BROKERAGE`
 

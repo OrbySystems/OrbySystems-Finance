@@ -187,6 +187,7 @@ import json
 import sys
 
 import pdfplumber
+from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 import parser_common
 import institutions
@@ -220,13 +221,115 @@ def _without_parser_stdout(fn, *args):
         return fn(*args)
 
 
-def _dump_text(pdf_path: str) -> None:
+# A PDF that needs a password to open, and none was given, or the one given
+# doesn't open it. The app asks the user for it (orby-core
+# docs/password-protected-pdfs.md) and passes it on stdin (--password-stdin),
+# never on the command line, in a file or in this output.
+PDF_PASSWORD_REQUIRED = "PDF_PASSWORD_REQUIRED"
+PDF_PASSWORD_INCORRECT = "PDF_PASSWORD_INCORRECT"
+
+
+class _LockedPDF(Exception):
+    """A PDF that needs its password, opened without it or with a wrong one."""
+
+    def __init__(self, given: bool):
+        self.code = PDF_PASSWORD_INCORRECT if given else PDF_PASSWORD_REQUIRED
+        super().__init__(self.code)
+
+    def result(self) -> dict:
+        """What the dispatcher prints for it: the words, and the code the app acts on."""
+        if self.code == PDF_PASSWORD_INCORRECT:
+            return {"error": "the password given doesn't open this PDF", "code": self.code}
+        return {"error": "this PDF is password-protected: it needs its password to open", "code": self.code}
+
+
+def _password_from_stdin(argv: list[str]) -> tuple[list[str], str | None]:
+    """--password-stdin: the PDF's password is all of stdin (one trailing
+    newline dropped, for a password typed at a terminal). Returns argv
+    without the flag, and the password, or None without the flag."""
+    if "--password-stdin" not in argv:
+        return argv, None
+    password = sys.stdin.read()
+    if password.endswith("\n"):
+        password = password[:-1].removesuffix("\r")
+    return [a for a in argv if a != "--password-stdin"], password
+
+
+def _is_password_error(err: BaseException, password: str | None) -> bool:
+    """Whether opening a PDF failed for its password: pdfminer's
+    PDFPasswordIncorrect, which pdfplumber raises wrapped (PdfminerException)
+    and with no message, or, for a password given, a character the PDF's
+    encryption can't take (pdfminer encodes older ones' passwords in
+    Latin-1), whose error would quote it."""
+    seen: BaseException | None = err
+    for _ in range(4):
+        if seen is None:
+            return False
+        if isinstance(seen, PDFPasswordIncorrect) or (password and isinstance(seen, UnicodeEncodeError)):
+            return True
+        inner = seen.args[0] if seen.args and isinstance(seen.args[0], BaseException) else None
+        seen = inner or seen.__cause__ or seen.__context__
+    return False
+
+
+def _open_pdf(pdf_path: str, password: str | None):
+    """The PDF at pdf_path, opened with password; _LockedPDF when its
+    password is what keeps it shut."""
+    try:
+        return pdfplumber.open(pdf_path, password=password)
+    except Exception as e:  # noqa: BLE001
+        if _is_password_error(e, password):
+            raise _LockedPDF(bool(password)) from None
+        raise
+
+
+def _supply_password(password: str | None) -> None:
+    """Some parsers open pdf_path again themselves (bofa_checking for its
+    check images, citi_credit_card, the Schwab and Fidelity ones): every
+    pdfplumber.open in this run that names no password gets this one, so a
+    password-protected statement reads as it would unlocked."""
+    if not password:
+        return
+    opener = pdfplumber.open
+
+    def open_with_password(path_or_fp, *args, **kwargs):
+        # password is open()'s fourth parameter, after pages and laparams.
+        if len(args) < 3 and kwargs.get("password") is None:
+            kwargs["password"] = password
+        return opener(path_or_fp, *args, **kwargs)
+
+    pdfplumber.open = open_with_password
+
+
+def _open_or_exit(pdf_path: str, password: str | None):
+    """The PDF at pdf_path, opened; a PDF that can't be opened prints why
+    and exits."""
+    try:
+        return _open_pdf(pdf_path, password)
+    except _LockedPDF as e:
+        print(json.dumps(e.result()))
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"error": f"failed to read PDF: {e}"}))
+    sys.exit(1)
+
+
+def _check_password(pdf_path: str, password: str | None) -> None:
+    """--check-password: opens the PDF, with the password when one is
+    given, and reads nothing. Prints {"opens": true}, or what a PDF that
+    can't be opened prints."""
+    with _open_or_exit(pdf_path, password) as pdf:
+        len(pdf.pages)
+    print(json.dumps({"opens": True}))
+
+
+def _dump_text(pdf_path: str, password: str | None = None) -> None:
     """Prints every page's raw pdfplumber-extracted text as JSON, with no
     detection/parsing attempted. Used when authoring a new institutions/
     module, to see the exact text layout detect()/parse() will receive.
     """
+    pdf = _open_or_exit(pdf_path, password)
     try:
-        with pdfplumber.open(pdf_path) as pdf:
+        with pdf:
             pages = [parser_common.page_text(p) for p in pdf.pages]
     except Exception as e:  # noqa: BLE001
         print(json.dumps({"error": f"failed to read PDF: {e}"}))
@@ -288,7 +391,8 @@ def main() -> None:
         _, extra_parsers_dir = _pop_flag_value(sys.argv[1:], "--extra-parsers-dir")
         _check_extra_parsers(extra_parsers_dir)
         return
-    argv = [a for a in sys.argv[1:] if a != "--dump-text"]
+    argv = [a for a in sys.argv[1:] if a not in ("--dump-text", "--check-password")]
+    argv, password = _password_from_stdin(argv)
     argv, vision_endpoint = _pop_flag_value(argv, "--vision-endpoint")
     argv, vision_model = _pop_flag_value(argv, "--vision-model")
     argv, vision_api_key = _pop_flag_value(argv, "--vision-api-key")
@@ -312,12 +416,15 @@ def main() -> None:
         vision = {"endpoint": vision_endpoint, "model": vision_model, "api_key": vision_api_key or ""}
 
     if len(argv) < 1:
-        print(json.dumps({"error": "usage: bank_statement.py <pdf-path> [--dump-text]"}))
+        print(json.dumps({"error": "usage: bank_statement.py <pdf-path> [--dump-text | --check-password] [--password-stdin]"}))
         sys.exit(1)
     pdf_path = argv[0]
 
+    if "--check-password" in sys.argv[1:]:
+        _check_password(pdf_path, password)
+        return
     if "--dump-text" in sys.argv[1:]:
-        _dump_text(pdf_path)
+        _dump_text(pdf_path, password)
         return
 
     unloaded = []
@@ -338,8 +445,10 @@ def main() -> None:
     fall_through = not (expected_parser or only_extra_parser)
 
     input_stats = {}
+    pdf = _open_or_exit(pdf_path, password)
+    _supply_password(password)
     try:
-        with pdfplumber.open(pdf_path) as pdf:
+        with pdf:
             # Check only the first few pages before doing any real work:
             # fail early if this isn't a supported statement format.
             head_text = [parser_common.page_text(p) for p in pdf.pages[:_DETECT_PAGE_COUNT]]
