@@ -179,6 +179,20 @@ has a bug" - the latter only ever surfaces once the named parser is
 confirmed to be the one that actually ran. No parser is passed over in
 this mode, or with --only-extra-parser: the named parser's failure is
 the answer.
+
+--use-parser <filename.py>, used internally by pkg/ingest when a real
+import already knows which parser classified this exact file content
+before (orby-core's ingest.ClassifyStatements, cached by content hash in
+RecordKnownKinds): moves that parser to the front of the try list
+(parser_common.prioritize_parser) so detect() finds it on the first try
+instead of working through every parser again, which it would otherwise
+have just done moments earlier to classify the same file. Unlike
+--expected-parser, this makes no promise about the outcome: detect() still
+decides, in the usual first-match-wins order with this one parser moved
+up, so a name that's gone, renamed, or now shadowed by a newer, higher-
+priority parser costs nothing beyond the one extra detect() call its new
+position adds - the rest of the list is tried exactly as it would be with
+no --use-parser at all.
 """
 
 import contextlib
@@ -400,7 +414,10 @@ def main() -> None:
     argv, only_extra_parser = _pop_flag_value(argv, "--only-extra-parser")
     argv, kind_filter = _pop_flag_value(argv, "--kind")
     argv, expected_parser = _pop_flag_value(argv, "--expected-parser")
+    argv, use_parser = _pop_flag_value(argv, "--use-parser")
     argv, adjust_raw = _pop_flag_value(argv, "--adjust")
+    detect_only = "--detect-only" in argv
+    argv = [a for a in argv if a != "--detect-only"]
     # Strict mode is for writing and testing a parser: the newer contract
     # rules are errors. Without it they are warnings (backwards compatible).
     strict = "--strict" in argv
@@ -440,6 +457,7 @@ def main() -> None:
     if kind_filter:
         parsers = [m for m in parsers if parser_common.module_kind(m) == kind_filter]
         bundled = [m for m in bundled if parser_common.module_kind(m) == kind_filter]
+    parsers = parser_common.prioritize_parser(parsers, use_parser)
     # A drop-in that claims the statement and fails is passed over
     # (parser_common.read_claimed) - unless one named parser is asked for.
     fall_through = not (expected_parser or only_extra_parser)
@@ -476,6 +494,21 @@ def main() -> None:
                 if unloaded_report:
                     out["unloadedExtraParsers"] = unloaded_report
                 print(json.dumps(out))
+                return
+
+            if detect_only:
+                # Classification (platform/finance/ingest.ClassifyStatements)
+                # only needs which parser matched and its kind - both known
+                # the moment detect() picks module, from its own KIND
+                # attribute (module_kind). Stop here: reading the rest of
+                # the PDF and running parse() would cost the same as a real
+                # import for a file nothing is being imported from.
+                print(json.dumps({
+                    "detected": True,
+                    "parserId": module.__name__.rsplit(".", 1)[-1],
+                    "kind": parser_common.module_kind(module),
+                    "bundled": module.__name__.startswith(("institutions.", "csv_institutions.")),
+                }))
                 return
 
             tail_text = [parser_common.page_text(p) for p in pdf.pages[_DETECT_PAGE_COUNT:]]

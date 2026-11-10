@@ -2297,6 +2297,37 @@ def check_expected_parser(module, reason: str, expected_parser: str | None) -> s
     return f"expected parser {expected_parser} to match, but nothing matched instead"
 
 
+def prioritize_parser(parsers: list, name: str | None) -> list:
+    """Moves the parser named name (matched the same '-'/'_'-insensitive
+    way as check_expected_parser) to the front of parsers, leaving every
+    other parser's relative order unchanged; returns parsers as given when
+    name is falsy or names none of them.
+
+    Used by bank_statement.py/csv_statement.py's --use-parser flag: a
+    caller that classified this exact file content before (orby-core's
+    ingest.ClassifyStatements/RecordKnownKinds) already knows which parser
+    matched, and names it here so detect() finds it on its first try
+    instead of working through the whole list again - detect() is still
+    run exactly as it always is, in this reordered list, so a stale or
+    wrong name (the parser was removed, renamed, or a newer, higher-
+    priority parser now shadows it) costs nothing beyond the one extra
+    detect() call this parser's new position adds: the rest of the list
+    is tried in its original order, same as a plain call with no
+    --use-parser at all.
+    """
+    if not name:
+        return parsers
+    # parser_name_key alone only strips a package prefix, not a trailing
+    # .py (rsplit(".", 1) would instead strip to "py") - check_expected_parser
+    # faces the same filename-vs-module-name mismatch and strips it the
+    # same way before normalizing.
+    key = parser_name_key(name[:-3] if name.endswith(".py") else name)
+    for i, module in enumerate(parsers):
+        if parser_name_key(module.__name__) == key:
+            return [module] + parsers[:i] + parsers[i + 1:]
+    return parsers
+
+
 def detect(call_detect, parsers):
     """Returns (module, reason) for the first parser in parsers whose
     detect() (invoked via call_detect(module), a small closure the

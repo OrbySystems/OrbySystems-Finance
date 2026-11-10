@@ -133,6 +133,11 @@ prints {"error": ...} and exits 1 rather than proceeding to that other
 module's parse() (see parser_common.check_expected_parser and
 bank_statement.py's own --expected-parser doc for the full rationale).
 No parser is passed over in this mode, or with --only-extra-parser.
+
+--use-parser <filename.py>, used internally by pkg/ingest when a real
+import already knows which parser classified this exact file content
+before - see bank_statement.py's own --use-parser doc for the full
+rationale (parser_common.prioritize_parser).
 """
 
 import contextlib
@@ -289,7 +294,10 @@ def main() -> None:
     argv, only_extra_parser = _pop_flag_value(argv, "--only-extra-parser")
     argv, kind_filter = _pop_flag_value(argv, "--kind")
     argv, expected_parser = _pop_flag_value(argv, "--expected-parser")
+    argv, use_parser = _pop_flag_value(argv, "--use-parser")
     argv, adjust_raw = _pop_flag_value(argv, "--adjust")
+    detect_only = "--detect-only" in argv
+    argv = [a for a in argv if a != "--detect-only"]
     # Strict mode is for writing and testing a parser: the newer contract
     # rules are errors. Without it they are warnings (backwards compatible).
     strict = "--strict" in argv
@@ -324,6 +332,7 @@ def main() -> None:
     if kind_filter:
         parsers = [m for m in parsers if parser_common.module_kind(m) == kind_filter]
         bundled = [m for m in bundled if parser_common.module_kind(m) == kind_filter]
+    parsers = parser_common.prioritize_parser(parsers, use_parser)
     # A drop-in that claims the export and fails is passed over
     # (parser_common.read_claimed) - unless one named parser is asked for.
     fall_through = not (expected_parser or only_extra_parser)
@@ -352,6 +361,20 @@ def main() -> None:
         if unloaded_report:
             out["unloadedExtraParsers"] = unloaded_report
         print(json.dumps(out))
+        return
+
+    if detect_only:
+        # Classification (platform/finance/ingest.ClassifyStatements) only
+        # needs which parser matched and its kind - both known the moment
+        # detect() picks module, from its own KIND attribute (module_kind).
+        # Stop here: reading every row and running parse() would cost the
+        # same as a real import for a file nothing is being imported from.
+        print(json.dumps({
+            "detected": True,
+            "parserId": module.__name__.rsplit(".", 1)[-1],
+            "kind": parser_common.module_kind(module),
+            "bundled": module.__name__.startswith(("institutions.", "csv_institutions.")),
+        }))
         return
 
     input_stats = {"columnCount": len(header)}
