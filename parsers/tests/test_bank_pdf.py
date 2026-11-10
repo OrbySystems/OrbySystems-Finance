@@ -14,6 +14,7 @@ import parser_common
 import statement_checks
 from conftest import FIXTURES, SCRIPTS, approx
 from institutions import citi_credit_card, citi_credit_card_family, star_one_credit_union, technology_credit_union
+from institutions import wells_fargo_checking
 
 
 def _running_balance(txns, opening):
@@ -62,6 +63,56 @@ def test_wells_fargo_synthetic(run_statement):
 
     assert "Rent Share For March" in stmt.transactions[0]["description"]
     assert stmt.transactions[0].get("reference") == "Ab12Cd34Ef56"
+
+
+# A Prime Checking statement: the accounts linked to it and two pages of
+# notices come first, so its history starts past the pages detect() sees.
+def test_wells_fargo_prime_linked_synthetic(run_statement):
+    stmt = run_statement("wells-fargo-prime-linked-synthetic-sample.pdf")
+    assert stmt.institution == "Wells Fargo"
+    assert stmt.first_account == "7890"
+    assert stmt.first_account_type == "Checking"
+    assert stmt.statement_date == "2025-03-31"
+    assert len(stmt.transactions) == 14
+    assert approx(sum(t["amount"] for t in stmt.transactions if t["amount"] > 0), 8550.42)
+    assert approx(-sum(t["amount"] for t in stmt.transactions if t["amount"] <= 0), 5296.45)
+    assert approx(_running_balance(stmt.transactions, 5000.00), 8253.97)
+
+
+def test_wells_fargo_linked_summary_takes_both_its_lines():
+    head = "Wells Fargo Prime Checking\nBank Deposit Account(s)\nAccount (Account Number) $ Balance\n"
+    assert wells_fargo_checking.detect(head)[0]
+    assert not wells_fargo_checking.detect("Wells Fargo Prime Checking\nAccount (Account Number) $ Balance\n")[0]
+
+
+# Claimed by its cover, a statement whose history never turns up is no read.
+def test_wells_fargo_cover_without_a_history_does_not_read():
+    page = "\n".join([
+        "March 31, 2025",
+        "Wells Fargo Prime Checking",
+        "Bank Deposit Account(s)",
+        "Account (Account Number) $ Balance",
+        "Balance on 3/1 1,000.00",
+    ])
+    with pytest.raises(ValueError, match="transaction history header"):
+        wells_fargo_checking.parse([page], "statement.pdf")
+
+
+# The closing balance is checked when text beside the summary shares its
+# line, as an address block's does.
+def test_wells_fargo_closing_balance_beside_other_text_is_checked():
+    page = "\n".join([
+        "March 31, 2025",
+        "Wells Fargo Everyday Checking",
+        "Statement period activity summary Account number: 1234567890 (primary account)",
+        "Balance on 3/1 1,000.00",
+        "Balance on 3/31 $900.00 Account terms and conditions apply",
+        "Date Description Check No. Additions Subtractions Daily Balance",
+        "3/5 Check 101 50.00 950.00",
+        "Totals $0.00 $50.00",
+    ])
+    with pytest.raises(ValueError, match="closing balance"):
+        wells_fargo_checking.parse([page], "statement.pdf")
 
 
 def test_chase_synthetic(run_statement):

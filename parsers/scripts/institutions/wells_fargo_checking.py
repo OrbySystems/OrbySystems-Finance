@@ -6,6 +6,10 @@ whose columns are:
     Date | Description | Check No. | Deposits/Additions |
     Withdrawals/Subtractions | Ending Daily Balance
 
+A Prime Checking statement can open instead with a summary of the
+accounts linked to it and pages of notices, so that its history starts
+past the pages detect() is shown.
+
 Unlike the Bank of America statements, deposits and withdrawals are NOT
 in separately-labeled sections - direction is encoded purely by which
 column an amount is printed in, and pdfplumber's extract_text() flattens
@@ -64,8 +68,11 @@ _ACCOUNT_NUMBER_RE = re.compile(
 
 # "Balance on 6/1 18,999.52" - the opening balance, and the seed for the
 # whole running-balance reconstruction. The closing "Balance on 6/30
-# $12,945.61" matches the same shape, so callers take the first hit.
-_BALANCE_ON_RE = re.compile(r"^Balance on \d{1,2}/\d{1,2}\s+\$?([\d,]+\.\d{2})\s*$", re.MULTILINE)
+# $12,945.61" matches the same shape: the first hit is the opening balance,
+# the last the closing one. Text can follow on the line: a statement with an address block beside its
+# summary prints the block's lines at the same height ("Balance on 6/30
+# $12,945.61 Wells Fargo Bank, N.A. ...").
+_BALANCE_ON_RE = re.compile(r"^Balance on \d{1,2}/\d{1,2}\s+\$?([\d,]+\.\d{2})(?![\d.,])", re.MULTILINE)
 
 # "Totals $119,153.23 $125,207.14" - deposits then withdrawals, printed
 # at the foot of the transaction history and used to validate the parse.
@@ -75,6 +82,16 @@ _TOTALS_RE = re.compile(r"^Totals\s+\$([\d,]+\.\d{2})\s+\$([\d,]+\.\d{2})\s*$", 
 #   Date Description Check No. Additions Subtractions Daily Balance
 # Reprinted on each page the table continues onto.
 _TABLE_HEADER_RE = re.compile(r"^Date\s+Description\s+Check No\.", re.IGNORECASE | re.MULTILINE)
+
+# The cover of a Prime Checking statement: a summary of the balances of
+# the accounts linked to it, which can be followed by pages of notices and
+# the transaction history only after them - past the pages detect() is
+# shown.
+#   Bank Deposit Account(s)
+#   Account (Account Number) $ Balance
+_LINKED_SUMMARY_RE = re.compile(
+    r"^Bank Deposit Accounts?\b.*\n\s*Account \(Account Number\)\s+\$\s*Balance\b", re.MULTILINE
+)
 
 # A transaction row: "M/D <description> <amount> [ending daily balance]".
 # The description is lazy so the trailing 1-2 amounts bind to the end of
@@ -142,12 +159,15 @@ def detect(head_text: str) -> tuple[bool, str]:
         return False, "'wells fargo' not found"
     if not _ACCOUNT_NAME_RE.search(head_text):
         return False, "'wells fargo' found, but no 'Wells Fargo <name> Checking/Savings' account header"
-    if not _TABLE_HEADER_RE.search(head_text):
-        return (
-            False,
-            "'wells fargo' found, but no 'Date Description Check No. ...' transaction history header",
-        )
-    return True, "matched Wells Fargo checking/savings transaction history"
+    if _TABLE_HEADER_RE.search(head_text):
+        return True, "matched Wells Fargo checking/savings transaction history"
+    if _LINKED_SUMMARY_RE.search(head_text):
+        return True, "matched Wells Fargo checking/savings linked accounts summary"
+    return (
+        False,
+        "'wells fargo' found, but no 'Date Description Check No. ...' transaction history header"
+        " or linked accounts summary",
+    )
 
 
 def _direction_hint(description: str) -> int:
@@ -368,6 +388,10 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
     balances = _BALANCE_ON_RE.findall(combined)
     opening_balance = common.parse_amount(balances[0]) if balances else None
 
+    # detect() can claim a statement by its cover alone; one whose history
+    # never turns up is not read as a month with no transactions.
+    if not _TABLE_HEADER_RE.search(combined):
+        raise ValueError("no 'Date Description Check No. ...' transaction history header found")
     rows = _collect_rows(pages_text)
     _assign_signs(rows, opening_balance)
 

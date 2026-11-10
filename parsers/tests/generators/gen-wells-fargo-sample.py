@@ -20,6 +20,12 @@ a transaction history that breaks across a page (so the repeated column
 header and page furniture get exercised), wrapped description lines, a
 totals line and a checks-written summary.
 
+It also writes wells-fargo-prime-linked-synthetic-sample.pdf, the same
+history in a Prime Checking statement: a cover summing up the accounts
+linked to it and two pages of notices first, so the history starts on page
+4 - past the three pages the dispatcher shows detect() - and an address
+block printed beside the activity summary, on its lines.
+
 Deliberately includes the cases that defeat description-keyword parsing:
   - a payroll deposit and a same-day reversal of the identical amount,
     where the balance arithmetic alone admits either ordering
@@ -84,6 +90,13 @@ PAGE_BREAK_AT = 10
 
 CHECKS_WRITTEN = [("101", "3/8", 250.00), ("102", "3/12", 1000.00), ("103", "3/28", 420.00)]
 
+# The Prime Checking fixture: its account, the savings linked to it, and
+# where the address block beside the activity summary sits.
+LINKED_FIXTURE = "wells-fargo-prime-linked-synthetic-sample.pdf"
+LINKED_ACCOUNT_NAME = "Wells Fargo Prime Checking"
+LINKED_SAVINGS = ("Wells Fargo Way2Save Savings", "2222222222", 15000.00)
+X_SIDE = 330
+
 
 def money(value: float) -> str:
     return f"{value:,.2f}"
@@ -128,9 +141,46 @@ def table_header(emit, y):
     return y - LINE_H
 
 
-def build_pages():
+def linked_cover_pages(account_name, closing):
+    """A Prime Checking statement's first three pages: the accounts linked
+    to it with their balances, then two pages of notices."""
+    cover = []
+    def emit(x, y, s):
+        cover.append((x, y, s))
+
+    y = PAGE_H - 50
+    emit(X_DATE, y, STATEMENT_DATE); y -= LINE_H
+    emit(X_DATE, y, "Page 1 of 5"); y -= LINE_H * 2
+    emit(X_DATE, y, account_name); y -= LINE_H
+    emit(X_DATE, y, "Questions? Please call us:"); y -= LINE_H
+    emit(X_DATE, y, "Online: wellsfargo.com"); y -= LINE_H
+    emit(X_DATE, y, "Write: Wells Fargo Bank, N.A."); y -= LINE_H
+    emit(X_DATE, y, "P.O. Box 6995"); y -= LINE_H
+    emit(X_DATE, y, "Portland, OR 97228-6995"); y -= LINE_H * 2
+    emit(X_DATE, y, "JANE SAMPLE"); y -= LINE_H
+    emit(X_DATE, y, "100 EXAMPLE ST"); y -= LINE_H
+    emit(X_DATE, y, "SPRINGFIELD IL 62701-0000"); y -= LINE_H * 2
+    emit(X_DATE, y, f"Accounts linked to your {account_name} account:"); y -= LINE_H
+    emit(X_DATE, y, "Bank Deposit Account(s)"); y -= LINE_H
+    emit(X_DATE, y, "Account (Account Number) $ Balance"); y -= LINE_H
+    name, number, balance = LINKED_SAVINGS
+    emit(X_DATE, y, f"{account_name} ({ACCOUNT_NUMBER}) - Your primary account {money(closing)}"); y -= LINE_H
+    emit(X_DATE, y, f"{name} ({number}) {money(balance)}"); y -= LINE_H
+    emit(X_DATE, y, f"Your Combined Balance this month: ${money(closing + balance)}")
+
+    pages = [cover]
+    for n, heading in ((2, "Important Account Information"), (3, "Other Wells Fargo Benefits")):
+        y = PAGE_H - 50
+        pages.append([(X_DATE, y, STATEMENT_DATE), (X_DATE, y - LINE_H, f"Page {n} of 5"),
+                      (X_DATE, y - LINE_H * 3, heading),
+                      (X_DATE, y - LINE_H * 4, "Deposit products offered by Wells Fargo Bank, N.A. Member FDIC.")])
+    return pages
+
+
+def build_pages(account_name=ACCOUNT_NAME, linked=False):
     rows, daily_end = compute_rows()
-    pages = []
+    pages = linked_cover_pages(account_name, rows[-1]["balance"]) if linked else []
+    first, last = len(pages) + 1, len(pages) + 2
 
     # --- page 1: cover summary + start of the transaction history ---
     items = []
@@ -139,14 +189,19 @@ def build_pages():
 
     y = PAGE_H - 50
     emit(X_DATE, y, STATEMENT_DATE); y -= LINE_H
-    emit(X_DATE, y, "Page 1 of 2"); y -= LINE_H * 2
-    emit(X_DATE, y, ACCOUNT_NAME); y -= LINE_H
+    emit(X_DATE, y, f"Page {first} of {last}"); y -= LINE_H * 2
+    emit(X_DATE, y, account_name); y -= LINE_H
     emit(X_DATE, y, "This is your primary checking account"); y -= LINE_H * 2
     emit(X_DATE, y, f"Statement period activity summary Account number: {ACCOUNT_NUMBER} (primary account)")
     y -= LINE_H * 2
     emit(X_DATE, y, f"Balance on 3/1 {money(OPENING_BALANCE)}"); y -= LINE_H
     deposits = round(sum(r["amount"] for r in rows if r["credit"]), 2)
     withdrawals = round(sum(r["amount"] for r in rows if not r["credit"]), 2)
+    if linked:
+        # The address block beside the summary, read on the summary's lines.
+        for k, side in enumerate(("JANE SAMPLE", "Wells Fargo Bank, N.A. (Member FDIC)",
+                                  "Account terms and conditions apply")):
+            emit(X_SIDE, y - LINE_H * k, side)
     emit(X_DATE, y, f"Deposits/Additions {money(deposits)}"); y -= LINE_H
     emit(X_DATE, y, f"Withdrawals/Subtractions - {money(withdrawals)}"); y -= LINE_H
     emit(X_DATE, y, f"Balance on 3/31 ${money(rows[-1]['balance'])}"); y -= LINE_H * 2
@@ -180,8 +235,8 @@ def build_pages():
     items = []
     y = PAGE_H - 50
     emit(X_DATE, y, STATEMENT_DATE); y -= LINE_H
-    emit(X_DATE, y, "Page 2 of 2"); y -= LINE_H * 2
-    emit(X_DATE, y, f"=> {ACCOUNT_NAME} ( continued)"); y -= LINE_H * 2
+    emit(X_DATE, y, f"Page {last} of {last}"); y -= LINE_H * 2
+    emit(X_DATE, y, f"=> {account_name} ( continued)"); y -= LINE_H * 2
     y = table_header(emit, y)
 
     for i, row in enumerate(rows[PAGE_BREAK_AT:], start=PAGE_BREAK_AT):
@@ -253,8 +308,12 @@ def build_pdf(pages, path):
 
 def main():
     rows, _ = compute_rows()
-    path = os.path.join(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures"), "wells-fargo-synthetic-sample.pdf")
+    fixtures = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures")
+    path = os.path.join(fixtures, "wells-fargo-synthetic-sample.pdf")
     build_pdf(build_pages(), path)
+    linked = os.path.join(fixtures, LINKED_FIXTURE)
+    build_pdf(build_pages(LINKED_ACCOUNT_NAME, linked=True), linked)
+    print(f"wrote {linked}")
     deposits = round(sum(r["amount"] for r in rows if r["credit"]), 2)
     withdrawals = round(sum(r["amount"] for r in rows if not r["credit"]), 2)
     print(f"wrote {path}")
