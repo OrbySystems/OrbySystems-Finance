@@ -87,7 +87,7 @@ def parse_german_date(raw: str, statement_date: str = "") -> str:
 #
 # The labels are the document's own vocabulary, deliberately not a
 # normalized enum. Normalization happens once on the Go side, at the
-# ingest boundary (pkg/ingest/account_type.go), so a parser - including a
+# ingest boundary (platform/finance/ingest/account_type.go), so a parser - including a
 # community parser written against the published contract - never has to
 # know the enum and can never get it wrong. Keep the two tables in step
 # when adding a pattern.
@@ -120,6 +120,12 @@ ACCOUNT_TYPE_PATTERNS = [
     (re.compile(r"\bMONEY\s*MARKET\b|\bMMA\b|\bMMKT\b", re.I), "Money Market"),
     (re.compile(r"\bCERTIFICATE\s+OF\s+DEPOSIT\b", re.I), "CD"),
     (re.compile(r"\bCHECKING\b|\bCHKG\b", re.I), "Checking"),
+    # Bank of America's Advantage accounts are checking, though their names
+    # never say so: Advantage Plus Banking, which a statement prints as "Adv
+    # Plus Banking", and SafeBalance (named without "Advantage" until 2019)
+    # and Relationship likewise. Its Advantage Savings is savings, by the
+    # next pattern.
+    (re.compile(r"\bADV(?:ANTAGE)?\.?\s+(?:PLUS|RELATIONSHIP)\s+BANKING\b|\bSAFE\s*BALANCE\s+BANKING\b", re.I), "Checking"),
     (re.compile(r"\bSAVINGS\b|\bSVGS\b", re.I), "Savings"),
     # Trust before the generic brokerage forms: a trust brokerage account
     # says both.
