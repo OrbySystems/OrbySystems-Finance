@@ -187,3 +187,64 @@ class PageTextTest(unittest.TestCase):
             out = subprocess.run([sys.executable, "-c", script, os.path.join(tmp, "margin.pdf")],
                                  cwd=scripts, capture_output=True, text=True, check=True).stdout
         self.assertEqual(out.strip(), "True")
+
+
+def _account_values(statement_date="2026-03-31", **row):
+    base = {"account": "1234", "accountType": "Brokerage", "period_start": "2026-01-01",
+            "opening_value": 100000.0}
+    base.update(row)
+    return {"institution": "Sample Broker", "statementDate": statement_date,
+            "tables": {"account_values": [base]}}
+
+
+def test_an_account_value_is_the_statements_printed_opening_value():
+    import pytest
+
+    parser_common.validate_multi_table_parse_result(_account_values(), "m")
+    # A margin account can open below zero.
+    parser_common.validate_multi_table_parse_result(_account_values(opening_value=-250.0), "m")
+    parser_common.validate_multi_table_parse_result(
+        _account_values(institution="Other Broker", provider_account_id="XXXX-1234"), "m")
+    # A statement with no date of its own has nothing to hold period_start to.
+    parser_common.validate_multi_table_parse_result(
+        _account_values(statement_date="", period_start="2030-01-01"), "m")
+    missing = _account_values()
+    del missing["tables"]["account_values"][0]["opening_value"]
+    for bad, says in ((missing, "missing key"),
+                      (_account_values(opening_value="100000"), "must be a number"),
+                      (_account_values(opening_value=None), "must be a number"),
+                      (_account_values(opening_value=True), "must be a number"),
+                      (_account_values(period_start="01/01/2026"), "period_start'] must be YYYY-MM-DD"),
+                      (_account_values(period_start="2026-04-01"), "after the statement's date"),
+                      (_account_values(closing_value=1.0), "unexpected key")):
+        with pytest.raises(ValueError, match=says):
+            parser_common.validate_multi_table_parse_result(bad, "m")
+
+
+def test_accounts_ending_alike_each_give_a_row_but_one_account_gives_one():
+    import pytest
+
+    # OrbySystems keeps an account by its last four digits, so two accounts
+    # whose numbers end alike are one account there, and their opening values
+    # are added when stored. The statement is not refused for it.
+    alike = _account_values(account="11111234")
+    alike["tables"]["account_values"].append(
+        dict(alike["tables"]["account_values"][0], account="22221234", accountType="IRA", opening_value=5.0))
+    parser_common.validate_multi_table_parse_result(alike, "m")
+    # The same account twice is one figure read twice: adding it would double it.
+    twice = _account_values()
+    twice["tables"]["account_values"].append(dict(twice["tables"]["account_values"][0], opening_value=5.0))
+    with pytest.raises(ValueError, match="more than once"):
+        parser_common.validate_multi_table_parse_result(twice, "m")
+    # A parser that masks the number tells two accounts ending alike apart
+    # by provider_account_id: two rows, not a repeat.
+    masked = _account_values(account="1234", provider_account_id="111-22221234")
+    masked["tables"]["account_values"].append(
+        dict(masked["tables"]["account_values"][0], provider_account_id="999-00001234", opening_value=5.0))
+    parser_common.validate_multi_table_parse_result(masked, "m")
+    # A row naming the statement's own institution is the same account as one naming none.
+    named = _account_values()
+    named["tables"]["account_values"].append(
+        dict(named["tables"]["account_values"][0], institution="Sample Broker"))
+    with pytest.raises(ValueError, match="more than once"):
+        parser_common.validate_multi_table_parse_result(named, "m")

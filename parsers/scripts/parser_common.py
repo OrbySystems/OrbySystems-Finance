@@ -1259,6 +1259,17 @@ _RETAIL_RETURN_OPTIONAL_KEYS = {
 }
 _RETAIL_RETURN_KEYS = _RETAIL_RETURN_REQUIRED_KEYS | _RETAIL_RETURN_OPTIONAL_KEYS
 
+# An account's value at the start of the statement's period, as the
+# statement prints it ("Beginning Value"), one row per account in the
+# account_values table. period_start is the first day the period covers;
+# the value is the account's at the start of it. It is an account total,
+# with no holdings behind it: it gives an account a valuation before its
+# first holdings snapshot, so one statement is enough for a return. The
+# closing value is not repeated here: the holdings give it.
+_ACCOUNT_VALUE_REQUIRED_KEYS = {"account", "accountType", "period_start", "opening_value"}
+_ACCOUNT_VALUE_OPTIONAL_KEYS = {"institution", "provider_account_id"}
+_ACCOUNT_VALUE_KEYS = _ACCOUNT_VALUE_REQUIRED_KEYS | _ACCOUNT_VALUE_OPTIONAL_KEYS
+
 # Per-table (required keys, all allowed keys, numeric keys, nullable
 # numeric keys) - cash_transactions reuses the exact same schema
 # bank_statement.py's own KIND_BANK parsers use for a "transactions"
@@ -1282,6 +1293,7 @@ _TABLE_SCHEMAS = {
         {"quantity", "unit_price", "tax", "shipping", "discount"},
     ),
     "retail_returns": (_RETAIL_RETURN_REQUIRED_KEYS, _RETAIL_RETURN_KEYS, {"amount"}, {"amount"}),
+    "account_values": (_ACCOUNT_VALUE_REQUIRED_KEYS, _ACCOUNT_VALUE_KEYS, {"opening_value"}, set()),
 }
 _STRING_ROW_KEYS = {
     "order_id", "charge_group", "payment_method", "item_id", "retailer_category",
@@ -1293,6 +1305,7 @@ _STRING_ROW_KEYS = {
     "sedol", "figi", "price_as_of", "price_time", "position_type",
     "market_identifier_code", "sector", "industry", "tax_lots_json",
     "realized_gain_term", "related_security_id", "corporate_event", "account_name",
+    "period_start",
 }
 _BOOL_ROW_KEYS = {"amount_missing", "is_cash_equivalent", "subscribe_and_save", "charged_back", "digital"}
 
@@ -1843,6 +1856,7 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
     extra_tables = set(tables) - set(_TABLE_SCHEMAS)
     if extra_tables:
         raise ValueError(f"{module_name}.parse(): unrecognized table name(s) in 'tables': {sorted(extra_tables)}")
+    opening_accounts: set[tuple[str, str]] = set()
     for table_name, rows in tables.items():
         required_keys, all_keys, numeric_keys, nullable_numeric_keys = _TABLE_SCHEMAS[table_name]
         if not isinstance(rows, list):
@@ -1902,6 +1916,23 @@ def validate_multi_table_parse_result(result: dict, module_name: str) -> None:
                 if line_type == RETAIL_LINE_PURCHASE and row["amount"] > 0:
                     raise ValueError(f"{module_name}.parse(): tables[{table_name!r}][{i}] is a purchase with a "
                                      f"positive amount; money spent is negative")
+            if table_name == "account_values":
+                where = f"{module_name}.parse(): tables[{table_name!r}][{i}]"
+                if not _DATE_RE.match(row["period_start"]):
+                    raise ValueError(f"{where}['period_start'] must be YYYY-MM-DD, got {row['period_start']!r}")
+                # The period ends on the statement's date; it cannot start after it.
+                if result["statementDate"] and row["period_start"] > result["statementDate"]:
+                    raise ValueError(f"{where}['period_start'] {row['period_start']} is after the statement's date "
+                                     f"{result['statementDate']}")
+                # The same account twice is one figure read twice; two accounts whose
+                # numbers only end alike are two rows, which OrbySystems adds. A row
+                # names its account by account and, if it has one, provider_account_id:
+                # a parser that masks the number tells two such accounts apart there.
+                account_key = (row.get("institution") or result["institution"], row["account"],
+                               row.get("provider_account_id") or "")
+                if account_key in opening_accounts:
+                    raise ValueError(f"{where}: account {row['account']!r} has its opening value more than once")
+                opening_accounts.add(account_key)
             if table_name == "retail_returns":
                 for key in ("date", "returned_on"):
                     if row.get(key) and not _DATE_RE.match(row[key]):

@@ -90,7 +90,8 @@ every bundled bank/credit-card parser predates brokerage support:
             # account section shaped like a plain bank transaction, in a
             # single pass: its keys must be a subset of
             # "cash_transactions", "brokerage_transactions",
-            # "brokerage_holdings" (each list optional/may be omitted or
+            # "brokerage_holdings", and "account_values", each account's
+            # printed opening value (each list optional/may be omitted or
             # empty - a pure positions statement only needs
             # "brokerage_holdings", for instance). Every row's keys are
             # validated against that table's own schema by
