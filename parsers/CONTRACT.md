@@ -214,8 +214,33 @@ below). `tables` keys must be a subset of:
   `vested_quantity`, `vested_value`, `position_type`,
   `market_identifier_code`, `sector`, `industry`, `is_cash_equivalent`,
   `tax_lots_json`, `provider_account_id`, `institution`, `account_name`.
+- **`account_values`** — one row per account on the statement: its value
+  at the start of the statement's period, as printed ("Beginning Value",
+  "Beginning Market Value", "Beginning Balance"). Required: `account`,
+  `accountType`, `period_start` (`YYYY-MM-DD`, the first day the period
+  covers, never after `statementDate`), `opening_value` (a number, as
+  printed; below zero for an account that opens owing). Optional:
+  `institution`, `provider_account_id`. It is the account's total, not its
+  holdings: OrbySystems uses it as the account's value before its first
+  holdings snapshot, so one statement is enough to measure a return. Take
+  the period's figure, not a year-to-date one printed beside it, and leave
+  the closing value out: the holdings give it. A statement that prints no
+  opening value, and every export, leaves the table out. A failed
+  `balance` check does not change the row: it is still the printed
+  figure. Two accounts whose numbers end in the same digits each give
+  their own row; OrbySystems keeps accounts by their last four digits, so
+  it adds the two together, as it does their holdings. The same account
+  twice is refused: it is one figure read twice. A row names its account
+  by `account` and, when it has one, `provider_account_id`, so a parser
+  that masks the number gives two accounts ending alike their
+  `provider_account_id`, or leaves both rows out.
 
-Any of the three tables may be omitted or empty.
+  **Emit it only for apps that accept it.** `account_values` is accepted
+  from the first release after v1.1.6. An older app rejects the unknown
+  table and fails the whole statement, so a parser delivered to, or
+  dropped in by, a user on an older release must leave it out.
+
+Any of these tables may be omitted or empty.
 
 A share movement with no cash behind it (merger, assignment, expiry,
 share-lending adjustment) is a `brokerage_transactions` row with
