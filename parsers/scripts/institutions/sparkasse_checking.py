@@ -42,7 +42,9 @@ is found by the shape of its lines - the opening Kontostand line's date
 followed by a comma, the closing one's starting with the same two words -
 and never by a word the sample faked. detect() takes the statement's own
 words (Sparkasse, Kontoauszug, Kontostand, a DE IBAN), or the name
-Sparkasse with that layout.
+Sparkasse with that layout. It declines a cooperative bank's Kontoauszug
+and N26's, which have the same words and may name a Sparkasse in a
+booking, by their own lines.
 """
 
 import re
@@ -52,7 +54,7 @@ import parser_common
 from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
-PARSER_REVISION = 2
+PARSER_REVISION = 3
 
 INSTITUTION = "Sparkasse"
 
@@ -125,6 +127,30 @@ def _currency_accepted() -> bool:
 # column header and "alter Kontostand" line tell it apart.
 _COOPERATIVE_RE = re.compile(r"\bBu\.?-?\s?Tag\b.*\bWert\b.*\bVorgang\b")
 
+# N26's Kontoauszug has the same words too, and a short month puts a
+# booking naming a Sparkasse (a withdrawal at its cash machine) on the
+# pages detect() reads. Any one of N26's own lines tells it apart: the
+# summary's "Dein alter Kontostand", a booking ending in its date and an
+# amount signed before it and followed by "€" ("05.04.2027 -19,99€") with
+# its "Wertstellung DD.MM.YYYY" line, or N26's BIC on the holder's
+# "IBAN: … • BIC:" line. N26's BIC alone is no sign: a Sparkasse booking's
+# details name the other party's bank.
+_N26_SUMMARY_RE = re.compile(r"\bDein\s+(?:alter|neuer)\s+Kontostand\b", re.I)
+_N26_BOOKING_RE = re.compile(r"\s" + _DATE + r"\s+[+-]\s?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}\s?€$")
+_N26_VALUE_DATE_RE = re.compile(r"^Wertstellung\s+" + _DATE + r"$")
+_N26_BIC_RE = re.compile(r"^IBAN:\s*DE[\d\s]+[•·]\s*BIC:?\s*NTSBDEB1")
+
+
+def _n26(lines: list[str]) -> str:
+    """Which of N26's own lines the text has, or ""."""
+    if any(_N26_SUMMARY_RE.search(s) for s in lines):
+        return "Dein alter/neuer Kontostand"
+    if any(_N26_BOOKING_RE.search(s) for s in lines) and any(_N26_VALUE_DATE_RE.match(s) for s in lines):
+        return "bookings ending 'DD.MM.YYYY ±N,NN€', Wertstellung"
+    if any(_N26_BIC_RE.match(s) for s in lines):
+        return "BIC NTSBDEB1 on the IBAN • BIC line"
+    return ""
+
 
 def detect(head_text: str) -> tuple[bool, str]:
     if not re.search(r"sparkasse", head_text, re.I):
@@ -132,6 +158,9 @@ def detect(head_text: str) -> tuple[bool, str]:
     if _COOPERATIVE_RE.search(head_text) and re.search(r"alter\s+Kontostand", head_text, re.I):
         return False, "a cooperative bank's Kontoauszug (Bu-Tag Wert Vorgang, alter Kontostand), not a Sparkasse's"
     lines = _lines(head_text)
+    n26 = _n26(lines)
+    if n26:
+        return False, f"an N26 Kontoauszug ({n26}), not a Sparkasse's"
     if "Kontoauszug" in head_text and "Kontostand" in head_text and _DE_IBAN_RE.search(head_text):
         return True, "matched Sparkasse Kontoauszug (Kontoauszug, Kontostand, DE IBAN)"
     if _IBAN_RE.search(head_text) and any(_OPENING_RE.match(s) for s in lines):

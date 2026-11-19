@@ -283,6 +283,58 @@ def test_detect_refuses_what_is_not_a_sparkasse_kontoauszug():
         "S Sparkasse\nSparkasse Beispielstadt\nKreditkartenabrechnung\nSaldo 12,00\n" + _ACCOUNT)[0] is False
 
 
+# An N26 Kontoauszug for a short month: its first three pages, the ones
+# detect() reads, hold the bookings, the summary and the notes. A cash
+# withdrawal at a Sparkasse's machine names one, and the summary says
+# Kontoauszug and Kontostand beside the holder's DE IBAN.
+_N26_FOOTER = ["Max Muster Erstellt am", "Beispielweg 1, 54321 Beispielstadt 01.05.2027",
+               "IBAN: DE00 1001 1001 0000 0000 01 • BIC: NTSBDEB1XXX Kontoauszug Nr. 4/2027"]
+_N26_HEADER = ["Kontoauszug Nr. 4/2027", "01.04.2027 bis 30.04.2027"]
+_N26_MONTH = [
+    "\n".join([*_N26_HEADER, "Beschreibung Verbuchungsdatum Betrag",
+               "Sparkasse Beispielstadt 03.04.2027 -100,00€", "Mastercard • Bargeld", "Wertstellung 02.04.2027",
+               "Muster Versand GmbH 05.04.2027 -19,99€", "Lastschriften",
+               "IBAN: DE00 9999 0000 0001 2345 67 • BIC: MUSTDEFFXXX", "Bestellung 4711",
+               "Wertstellung 05.04.2027", *_N26_FOOTER, "1 / 3"]),
+    "\n".join([*_N26_HEADER, "Zusammenfassung", "Dein alter Kontostand +500,00€",
+               "Ausgehende Transaktionen -119,99€", "Eingehende Transaktionen +0,00€",
+               "Dein neuer Kontostand +380,01€", *_N26_FOOTER, "2 / 3"]),
+    "\n".join([*_N26_HEADER, "Hinweise", "Bitte prüfe diesen Kontoauszug.", *_N26_FOOTER, "3 / 3"]),
+]
+
+
+def _without(text: str, *markers: str) -> str:
+    """The N26 month with some of its own lines written another way."""
+    if "summary" in markers:
+        text = re.sub(r"Dein (alter|neuer) Kontostand", lambda m: m.group(1).capitalize() + " Kontostand", text)
+    if "bookings" in markers:
+        text = re.sub(r"(\d,\d\d)€", r"\1", text).replace("Wertstellung", "Valuta")
+    if "bic" in markers:
+        text = text.replace("NTSBDEB1XXX", "MUSTDEFFXXX")
+    return text
+
+
+@pytest.mark.parametrize("kept", ["all", "summary", "bookings", "bic"])
+def test_detect_refuses_an_n26_kontoauszug_that_names_a_sparkasse(kept):
+    # Each of N26's own lines is enough on its own: the summary's "Dein
+    # alter/neuer Kontostand", a booking ending in its date and "±N,NN€"
+    # with its Wertstellung line, N26's BIC on the holder's IBAN line.
+    others = [m for m in ("summary", "bookings", "bic") if m != kept]
+    text = "\n".join(_N26_MONTH) if kept == "all" else _without("\n".join(_N26_MONTH), *others)
+    matched, reason = sparkasse_checking.detect(text)
+    assert matched is False and "N26" in reason, reason
+    # Without any of them, what is left is a Sparkasse's words.
+    assert sparkasse_checking.detect(_without(text, "summary", "bookings", "bic"))[0] is True
+
+
+def test_detect_takes_a_sparkasse_statement_with_a_transfer_to_an_n26_account():
+    # A booking's details name the other party's IBAN and BIC, N26's too.
+    bookings = ["01.04.2027Überweisung -60,00", "Max Muster",
+                "IBAN DE00 1001 1001 0000 0000 01 BIC NTSBDEB1XXX", "Miete April"]
+    matched, reason = sparkasse_checking.detect("\n".join(_statement(bookings)))
+    assert matched, reason
+
+
 # --- the copy of the German helpers a drop-in falls back to ----------------------
 
 def test_the_fallback_helpers_agree_with_commons(monkeypatch):
