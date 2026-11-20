@@ -408,7 +408,7 @@ figure reads that resolved class, never the `action` word:
 | figure | reads |
 |---|---|
 | income by security, the income view | `dividend`, `interest` |
-| tax lots | `buy` (a reinvestment is a `buy`), `sell` |
+| tax lots | `buy` (a reinvestment is a `buy`), `sell`, `redemption` (a bond's maturity, a fund's or a CD's redemption: its shares leave as a sale's do) |
 | performance charges (`v_period_return`) | `fee` (margin interest is a `fee`) |
 | contributions and withdrawals | the flow classes above |
 
