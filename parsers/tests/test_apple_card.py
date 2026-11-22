@@ -163,6 +163,88 @@ def test_interest_that_does_not_close_the_balance_is_not_invented():
     assert ("balance", "Total Balance") in _failed(results)
 
 
+_RETURN_TRANSACTIONS = ("Transactions\nDate Description Daily Cash Amount\n"
+                        "03/05/2027 FIRST STORE 1 MAIN ST TOWN 00001 ST USA 2% $1.00 $50.00\n"
+                        "03/09/2027 SECOND STORE 2 MAIN ST TOWN 00001 ST USA 2% $0.60 $30.00\n"
+                        "03/10/2027 FIRST STORE 1 MAIN ST TOWN 00001 ST USA (RETURN) -$20.00\n"
+                        "Daily Cash Adjustment -2% $0.40\n"
+                        "Total Daily Cash this month $1.60\n"
+                        "Total charges, credits and returns $60.40")
+
+
+def test_a_daily_cash_adjustment_under_a_return_is_a_charge_on_the_card():
+    out, results = _parse(_pages(_PAYMENTS, _RETURN_TRANSACTIONS, total="$60.40"))
+    assert [t["amount"] for t in out["transactions"]] == [200.00, -50.00, -30.00, 20.00, -0.40]
+    adjustment = out["transactions"][-1]
+    assert adjustment["description"] == "Daily Cash Adjustment" and adjustment["date"] == "2027-03-10"
+    assert _failed(results) == set()
+
+
+def test_interest_printed_on_an_undated_line_is_a_row_on_the_closing_date():
+    out, results = _parse(_pages(_PAYMENTS, _TRANSACTIONS, total="$83.21", interest="$3.21",
+                                 interest_rows="Interest charge $3.21"))
+    interest = [t for t in out["transactions"] if t["description"].lower().startswith("interest")]
+    assert [(t["description"], t["date"]) for t in interest] == [("Interest charge", "2027-03-31")]
+    assert approx(interest[0]["amount"], -3.21)
+    assert _failed(results) == set()
+
+
+def _installments(bought: str) -> str:
+    return "\n".join([_HEADER, "Apple Card Monthly Installments", "Dates Description Daily Cash Amounts",
+                      f"{bought} APPLE STORE CA $999.00", "TRANSACTION #abc123",
+                      "This month's installment: $83.25", "Final installment: Dec 31, 2027",
+                      "Total financed $999.00", "Total payments and credits $166.50",
+                      "Total installments $832.50", "Page 3 /4"])
+
+
+def test_an_installment_plan_bought_before_the_period_is_read_and_is_not_a_row():
+    # Its totals are the plan's, so they don't stand in for the
+    # Transactions table's either.
+    pages = _pages(_PAYMENTS, _TRANSACTIONS)
+    pages.insert(2, _installments("01/15/2027"))
+    out, results = _parse(pages)
+    assert [t["amount"] for t in out["transactions"]] == [200.00, -50.00, -30.00]
+    assert _failed(results) == set()
+
+
+def test_an_installment_plan_bought_in_the_period_is_reported_not_read():
+    pages = _pages(_PAYMENTS, _TRANSACTIONS)
+    pages.insert(2, _installments("03/15/2027"))
+    out, results = _parse(pages)
+    assert len(out["transactions"]) == 3
+    assert _failed(results) == {("unread", "Apple Card Monthly Installments")}
+
+
+def test_installment_plans_each_with_their_own_totals_are_all_read():
+    plans = "\n".join([_HEADER, "Apple Card Monthly Installments", "Dates Description Daily Cash Amounts",
+                       "01/15/2027 APPLE STORE CA $999.00", "TRANSACTION #abc123", "Final installment: Dec 31, 2027",
+                       "Total financed $999.00", "Total payments and credits $166.50", "Total installments $832.50",
+                       "02/10/2027 APPLE STORE CA $249.00", "TRANSACTION #def456", "Final installment: Jan 31, 2028",
+                       "Total financed $249.00", "Total payments and credits $20.75", "Total installments $228.25",
+                       "Page 3 /4"])
+    pages = _pages(_PAYMENTS, _TRANSACTIONS)
+    pages.insert(2, plans)
+    out, results = _parse(pages)
+    assert [t["amount"] for t in out["transactions"]] == [200.00, -50.00, -30.00]
+    assert _failed(results) == set()
+
+
+def test_interest_read_from_its_line_is_not_added_again_from_the_months_total():
+    # The rows fall short of the Total Balance by exactly the month's
+    # interest for some other reason: the interest is still counted once.
+    out, results = _parse(_pages(_PAYMENTS, _TRANSACTIONS, previous="$196.79", total="$83.21", interest="$3.21",
+                                 interest_rows="Interest charge $3.21"))
+    assert [t["description"] for t in out["transactions"]].count("Interest charge") == 1
+    assert "Interest Charged" not in [t["description"] for t in out["transactions"]]
+    assert ("balance", "Total Balance") in _failed(results)
+
+
+def test_an_interest_line_of_nothing_is_not_a_row():
+    out, results = _parse(_pages(_PAYMENTS, _TRANSACTIONS, interest_rows="Interest charge on installments $0.00"))
+    assert [t["amount"] for t in out["transactions"]] == [200.00, -50.00, -30.00]
+    assert _failed(results) == set()
+
+
 def test_detect():
     pages = _pages(_PAYMENTS, _TRANSACTIONS)
     assert apple_card.detect("\n".join(pages))[0]

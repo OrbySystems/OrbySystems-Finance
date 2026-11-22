@@ -22,6 +22,28 @@ MM/DD/YYYY dates:
     Total Daily Cash this month $9.99
     Total charges, credits and returns $800.56
 
+A return can be followed by an undated line taking back the Daily Cash its
+purchase earned, which the card charges and counts in the table's total:
+
+    09/12/2029 HARDWARE STORE 5 ELM ST ANYTOWN 12345 CA USA (RETURN) -$40.00
+    Daily Cash Adjustment -2% $0.80
+
+Interest is printed under its own heading, undated, then totalled:
+
+    Interest Charged
+    Interest charge $12.34
+    Total interest for this month $12.34
+
+Apple Card Monthly Installments list each plan under plural column names,
+with the plan's purchase date. A plan bought before this period is already
+in the Previous Total Balance, so its line is read but is not a row; one
+bought in this period is reported as unread, since no statement of that
+kind has been seen yet:
+
+    Apple Card Monthly Installments
+    Dates Description Daily Cash Amounts
+    02/10/2029 APPLE STORE CA $999.00
+
 The statement prints no card or account number - the only number near the
 activity is the paying bank account's, in the payment's description - so
 every row carries an empty account and the app asks which account the
@@ -49,7 +71,7 @@ import parser_common
 from institutions import common
 
 SUPPORT_TIER = parser_common.SUPPORT_TIER_VERIFIED
-PARSER_REVISION = 1
+PARSER_REVISION = 2
 
 _MONTHS = {m: i for i, m in enumerate(
     ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
@@ -75,8 +97,20 @@ _TOTAL_INTEREST_RE = re.compile(r"^Total interest for this month\s+" + _AMOUNT, 
 # "Transactions").
 _TABLE_HEADER_RE = re.compile(r"^Date\s+Description\s+(?:Daily Cash\s+)?Amount$")
 
+# The installments table's header: its column names are plural.
+_INSTALLMENTS_HEADER_RE = re.compile(r"^Dates\s+Description\s+(?:Daily Cash\s+)?Amounts$")
+
 # The interest table prints no column header of its own.
 _INTEREST_HEADING_RE = re.compile(r"^Interest Charged$")
+# Its rows are undated: "Interest charge $12.34".
+_INTEREST_ROW_RE = re.compile(r"^(Interest charge[^$]*?)\s+" + _AMOUNT + r"$", re.IGNORECASE)
+
+# What ends the installments table: the sections printed after it. Its own
+# "Total ..." lines don't, since each plan may print its totals.
+_ENDS_INSTALLMENTS_RE = re.compile(r"^(?:Daily Cash|Legal)$")
+
+# The Daily Cash a return takes back, charged to the card, under the return.
+_CASH_ADJUSTMENT_RE = re.compile(r"^(Daily Cash Adjustment)\s+-?\d+(?:\.\d+)?%\s+" + _AMOUNT + r"$", re.IGNORECASE)
 
 # A table's own total: "Total payments for this period -$183.20",
 # "Total charges, credits and returns $800.56", "Total interest for this
@@ -130,16 +164,19 @@ class _Table:
     """One activity table: its name, the rows read from it, the statement's
     own total for it, and the lines in it that could not be read."""
 
-    def __init__(self, label: str):
+    def __init__(self, label: str, kind: str = "activity"):
         self.label = label
+        self.kind = kind  # "activity", "interest" or "installments"
         self.rows: list[dict] = []
         self.total: float | None = None
         self.unread: list[dict] = []
 
 
-def _tables(pages_text: list[str]) -> tuple[list[_Table], list[dict]]:
+def _tables(pages_text: list[str], opening: datetime | None = None,
+            closing: datetime | None = None) -> tuple[list[_Table], list[dict]]:
     """The activity tables, and dated lines outside any table - rows under a
     heading this parser doesn't know, reported rather than dropped."""
+    closing_date = closing.strftime("%Y-%m-%d") if closing else ""
     tables: list[_Table] = []
     stray: list[dict] = []
     current: _Table | None = None
@@ -163,22 +200,53 @@ def _tables(pages_text: list[str]) -> tuple[list[_Table], list[dict]]:
                 reading = True
                 previous_line = s
                 continue
+            if _INSTALLMENTS_HEADER_RE.match(s):
+                label = previous_line if _is_heading(previous_line) else "Apple Card Monthly Installments"
+                current = _Table(label, "installments")
+                tables.append(current)
+                reading = True
+                previous_line = s
+                continue
             if _INTEREST_HEADING_RE.match(s):
-                current = _Table(s)
+                current = _Table(s, "interest")
                 tables.append(current)
                 reading = True
                 previous_line = s
                 continue
 
             total = _TABLE_TOTAL_RE.match(s)
-            if total and current is not None:
+            if current is not None and current.kind == "installments":
+                # Its totals are the plans'; the next plan may follow them.
+                if _ENDS_INSTALLMENTS_RE.match(s):
+                    reading = False
+            elif total and current is not None:
                 current.total = common.parse_amount(total.group(1))
                 reading = False
             elif _ENDS_ROWS_RE.match(s):
                 reading = False
 
+            interest = _INTEREST_ROW_RE.match(s)
+            adjustment = _CASH_ADJUSTMENT_RE.match(s)
             m = _ROW_RE.match(s)
-            if m and reading and current is not None:
+            if reading and current is not None and current.kind == "interest" and interest and closing_date:
+                amount = common.parse_amount(interest.group(2))
+                if amount:  # a line of $0.00 charged nothing
+                    current.rows.append({"date": closing_date, "description": interest.group(1).strip(),
+                                         "amount": amount, "balance": None})
+            elif reading and current is not None and current.kind == "activity" and adjustment and current.rows:
+                # Dated with the return it follows.
+                current.rows.append({"date": current.rows[-1]["date"], "description": adjustment.group(1),
+                                     "amount": common.parse_amount(adjustment.group(2)), "balance": None})
+            elif m and reading and current is not None and current.kind == "installments":
+                month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                try:
+                    bought = datetime(year, month, day)
+                except ValueError:
+                    bought = None
+                # A plan bought before this period: read, not a row.
+                if bought is None or opening is None or bought >= opening:
+                    current.unread.append({"page": page_no, "line": line_no, "text": s})
+            elif m and reading and current is not None:
                 month, day, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
                 current.rows.append({
                     "date": f"{year:04d}-{month:02d}-{day:02d}",
@@ -203,25 +271,26 @@ def _is_heading(line: str) -> bool:
 
 def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> dict:  # noqa: ARG001 - pdf_path/vision unused, see bank_statement.py contract
     combined = "\n".join(pages_text)
-    _, closing = _period(combined)
+    opening, closing = _period(combined)
     previous = _figure(_PREVIOUS_TOTAL_RE, combined)
     if previous is None:
         previous = _figure(_PREVIOUS_MONTHLY_RE, combined)
     total_balance = _figure(_TOTAL_BALANCE_RE, combined)
     interest = _figure(_TOTAL_INTEREST_RE, combined)
 
-    tables, stray = _tables(pages_text)
+    tables, stray = _tables(pages_text, opening, closing)
 
     # Interest the statement charged but printed in no row of its own is
     # added, dated on the closing date - only when the statement's own
     # figures say it is missing: the rows fall short of the Total Balance by
     # exactly the month's interest.
-    if interest and closing and previous is not None and total_balance is not None:
+    has_interest_row = any(r for t in tables if t.kind == "interest" for r in t.rows)
+    if interest and closing and previous is not None and total_balance is not None and not has_interest_row:
         read = round(previous + sum(r["amount"] for t in tables for r in t.rows), 2)
         if read != round(total_balance, 2) and round(read + interest, 2) == round(total_balance, 2):
             table = next((t for t in tables if t.label == "Interest Charged"), None)
             if table is None:
-                table = _Table("Interest Charged")
+                table = _Table("Interest Charged", "interest")
                 tables.append(table)
             table.rows.append({"date": closing.strftime("%Y-%m-%d"), "description": "Interest Charged",
                                "amount": interest, "balance": None})
@@ -242,7 +311,8 @@ def parse(pages_text: list[str], pdf_path: str, vision: dict | None = None) -> d
     checks: list[dict] = []
     index = {id(r): i for i, r in enumerate(transactions)}
     for t in tables:
-        if t.total is not None:
+        # An installments table's totals are the plans', not rows here.
+        if t.total is not None and t.kind != "installments":
             checks.append({"kind": "sum", "label": t.label, "table": "cash_transactions",
                            "rows": [index[id(r)] for r in t.rows], "expected": -t.total})
         if t.unread:
